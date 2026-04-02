@@ -24,6 +24,16 @@ uv sync
 
 This creates a `.venv` and installs all pinned dependencies.
 
+## Activate the virtual environment
+If needed: 
+```bash
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+then 
+```bash
+.venv\Scripts\activate
+```
+
 ## Usage
 
 **Find your Arduino's BLE address (first time only):**
