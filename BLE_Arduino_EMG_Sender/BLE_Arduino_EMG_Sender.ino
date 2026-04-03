@@ -16,7 +16,7 @@
 ///////////////////////////////////////////// EDITABLE REGION ///////////////////////////////////////////////
 
 //Establish the students penn key to be used in the device and local names of the BLE peripheral
-char pennKey[]                  =           "43133223";                       // a short unique identifier
+char pennKey[]                  =           "jelenav";                       // a short unique identifier
 
 ///////////////////////////////////////// END EDITABLE REGION ///////////////////////////////////////////////
 
@@ -108,6 +108,8 @@ void loop()
     }
     //when the central disconnects, turn on the indicator light to indicate that device is searching for central:
     digitalWrite(ledPin, HIGH);
+    // // Re-start advertising after disconnection
+    // BLE.advertise();
   }
 }
 

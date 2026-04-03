@@ -1,0 +1,14 @@
+name: emgLAB
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - asyncqt=0.8.0
+  - pyqtgraph=0.13.2
+  - pyqt=5.15.7
+  - qasync=0.23.0
+  - numpy=1.24.2
+  - pip=23.0.1
+  - pip:
+    - bleak==1.0.1
