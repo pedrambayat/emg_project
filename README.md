@@ -24,7 +24,7 @@ uv sync
 
 if not working, change PATH:
 
-``bash
+```bash
 (emg-project) PS C:\Users\pbayat\emg_project> [Environment]::SetEnvironmentVariable(
 >>   "Path",
 >>   [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\Users\pbayat\.local\bin",
