@@ -22,6 +22,16 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 uv sync
 ```
 
+if not working, change PATH:
+
+``bash
+(emg-project) PS C:\Users\pbayat\emg_project> [Environment]::SetEnvironmentVariable(
+>>   "Path",
+>>   [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\Users\pbayat\.local\bin",
+>>   "User"
+>> )
+```
+
 This creates a `.venv` and installs all pinned dependencies.
 
 ## Activate the virtual environment

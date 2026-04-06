@@ -16,7 +16,7 @@
 ///////////////////////////////////////////// EDITABLE REGION ///////////////////////////////////////////////
 
 //Establish the students penn key to be used in the device and local names of the BLE peripheral
-char pennKey[]                  =           "jelenav";                       // a short unique identifier
+char pennKey[]                  =           "pbayat";                       // a short unique identifier
 
 ///////////////////////////////////////// END EDITABLE REGION ///////////////////////////////////////////////
 
