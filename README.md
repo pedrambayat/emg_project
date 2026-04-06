@@ -25,6 +25,11 @@ uv sync
 if not working, change PATH:
 
 ```bash
+$env:Path += ";C:\Users\pbayat\.local\bin"
+uv --version
+```
+
+```bash
 [Environment]::SetEnvironmentVariable(
   "Path",
   [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\Users\pbayat\.local\bin",
