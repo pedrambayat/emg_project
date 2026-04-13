@@ -8,6 +8,12 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "asyncqt"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/74/244172acc3dfe33ac57eb987e6be1f8b4d0dfb87088aba20748de36ddbcb/asyncqt-0.8.0.tar.gz", hash = "sha256:07aa993c7a4b1d4edbd35acced44d1be01da149ba3f7c9a7fa984be4ceca883f", size = 12142, upload-time = "2020-03-18T10:30:47.257Z" }
+
+[[package]]
 name = "bleak"
 version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -32,18 +38,6 @@ wheels = [
 ]
 
 [[package]]
-name = "colorzero"
-version = "2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b3/ca/688824a06e8c4d04c7d2fd2af2d8da27bed51af20ee5f094154e1d680334/colorzero-2.0.tar.gz", hash = "sha256:e7d5a5c26cd0dc37b164ebefc609f388de24f8593b659191e12d85f8f9d5eb58", size = 25382, upload-time = "2021-03-15T23:42:23.261Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7e/a6/ddd0f130e44a7593ac6c55aa93f6e256d2270fd88e9d1b64ab7f22ab8fde/colorzero-2.0-py2.py3-none-any.whl", hash = "sha256:0e60d743a6b8071498a56465f7719c96a5e92928f858bab1be2a0d606c9aa0f8", size = 26573, upload-time = "2021-03-15T23:42:21.757Z" },
-]
-
-[[package]]
 name = "dbus-fast"
 version = "4.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -60,47 +54,26 @@ name = "emg-project"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "asyncqt" },
     { name = "bleak" },
-    { name = "gpiozero" },
     { name = "numpy" },
-    { name = "pigpio" },
+    { name = "pyqt5" },
+    { name = "pyqt5-qt5", marker = "sys_platform == 'win32'" },
+    { name = "pyqt5-sip", marker = "sys_platform == 'win32'" },
     { name = "pyqtgraph" },
     { name = "qasync" },
-    { name = "rpi-lgpio" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "asyncqt", specifier = "==0.8.0" },
     { name = "bleak", specifier = "==1.0.1" },
-    { name = "gpiozero", specifier = ">=2.0.1" },
     { name = "numpy", specifier = "==1.24.2" },
-    { name = "pigpio", specifier = ">=1.78" },
+    { name = "pyqt5", specifier = "==5.15.6" },
+    { name = "pyqt5-qt5", marker = "sys_platform == 'win32'", specifier = "==5.15.2" },
+    { name = "pyqt5-sip", marker = "sys_platform == 'win32'", specifier = "==12.11.0" },
     { name = "pyqtgraph", specifier = "==0.13.2" },
     { name = "qasync", specifier = "==0.23.0" },
-    { name = "rpi-lgpio", specifier = ">=0.6" },
-]
-
-[[package]]
-name = "gpiozero"
-version = "2.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorzero" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/47/334b8db8a981eca9a0fb1e7e48e1997a5eaa8f40bb31c504299dcca0e6ff/gpiozero-2.0.1.tar.gz", hash = "sha256:d4ea1952689ec7e331f9d4ebc9adb15f1d01c2c9dcfabb72e752c9869ab7e97e", size = 136176, upload-time = "2024-02-15T11:07:02.919Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/eb/6518a1b00488d48995034226846653c382d676cf5f04be62b3c3fae2c6a1/gpiozero-2.0.1-py3-none-any.whl", hash = "sha256:8f621de357171d574c0b7ea0e358cb66e560818a47b0eeedf41ce1cdbd20c70b", size = 150818, upload-time = "2024-02-15T11:07:00.451Z" },
-]
-
-[[package]]
-name = "lgpio"
-version = "0.2.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/56/33/26ec2e8049eaa2f077bf23a12dc61ca559fbfa7bea0516bf263d657ae275/lgpio-0.2.2.0.tar.gz", hash = "sha256:11372e653b200f76a0b3ef8a23a0735c85ec678a9f8550b9893151ed0f863fff", size = 90087, upload-time = "2024-03-29T21:59:55.901Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/4e/5721ae44b29e4fe9175f68c881694e3713066590739a7c87f8cee2835c25/lgpio-0.2.2.0-cp311-cp311-linux_armv7l.whl", hash = "sha256:5b3c403e1fba9c17d178f1bde102726c548fc5c4fc1ccf5ec3e18f3c08e07e04", size = 382992, upload-time = "2024-03-29T22:00:45.039Z" },
-    { url = "https://files.pythonhosted.org/packages/88/53/e57a22fe815fc68d0991655c1105b8ed872a68491d32e4e0e7d10ffb5c4d/lgpio-0.2.2.0-cp311-cp311-manylinux_2_34_aarch64.whl", hash = "sha256:a2f71fb95b149d8ac82c7c6bae70f054f6dc42a006ad35c90c7d8e54921fbcf4", size = 364848, upload-time = "2024-04-01T22:49:45.889Z" },
-    { url = "https://files.pythonhosted.org/packages/a4/71/11f4e3d76400e4ca43f9f9b014f5a86d9a265340c0bea45cce037277eb34/lgpio-0.2.2.0-cp311-cp311-manylinux_2_34_x86_64.whl", hash = "sha256:e9f4f3915abe5ae0ffdb4b96f485076d80a663876d839e2d3fd9218a71b9873e", size = 370183, upload-time = "2024-04-13T14:08:14.139Z" },
 ]
 
 [[package]]
@@ -115,15 +88,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b6/d7/b208a4a534732e4a978003768ac7b8c14fcd4ca5b1653ce4fb4c2826f3a4/numpy-1.24.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9a23f8440561a633204a67fb44617ce2a299beecf3295f0d13c495518908e910", size = 17276093, upload-time = "2023-02-05T19:48:57.086Z" },
     { url = "https://files.pythonhosted.org/packages/fa/72/979b755c09696de035d835a78df94b079e3e51ea967efa0c800cff608847/numpy-1.24.2-cp311-cp311-win32.whl", hash = "sha256:e428c4fbfa085f947b536706a2fc349245d7baa8334f0c5723c56a10595f9b95", size = 12420296, upload-time = "2023-02-05T19:49:16.271Z" },
     { url = "https://files.pythonhosted.org/packages/17/57/82c3a9321f5dbcbdbe407476ea93dc4fabcadc819fd9baddf3511ddd5833/numpy-1.24.2-cp311-cp311-win_amd64.whl", hash = "sha256:557d42778a6869c2162deb40ad82612645e21d79e11c1dc62c6e82a2220ffb04", size = 14832391, upload-time = "2023-02-05T19:49:38.24Z" },
-]
-
-[[package]]
-name = "pigpio"
-version = "1.78"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a9/4a/3ebdfd90906553fb5420e80a475eb52f0809f2a29b547ba3b260db0cbc8f/pigpio-1.78.tar.gz", hash = "sha256:91efa50e4990649da97408a384782d6ccf58342fc59cdfe21ed7a42911569975", size = 40738, upload-time = "2020-09-29T23:55:12.61Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/a0/991ac7f96f83936c15f4b26b51d1fdba63e7bc9866411bfda022b649c2a7/pigpio-1.78-py2.py3-none-any.whl", hash = "sha256:81e46f640c4e6342881fa9bbe290dbcd4fc179619dc6591e57a9d4a084dc49fa", size = 39622, upload-time = "2020-09-29T23:55:11.013Z" },
 ]
 
 [[package]]
@@ -174,6 +138,45 @@ wheels = [
 ]
 
 [[package]]
+name = "pyqt5"
+version = "5.15.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyqt5-qt5" },
+    { name = "pyqt5-sip" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3b/27/fd81188a35f37be9b3b4c2db1654d9439d1418823916fe702ac3658c9c41/PyQt5-5.15.6.tar.gz", hash = "sha256:80343bcab95ffba619f2ed2467fd828ffeb0a251ad7225be5fc06dcc333af452", size = 3239505, upload-time = "2021-10-29T14:26:39.186Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/1c/46d8f76e1719a8a00921ab579ed1b908c830d356a7658ec7ceda5d421912/PyQt5-5.15.6-cp36-abi3-macosx_10_13_x86_64.whl", hash = "sha256:33ced1c876f6a26e7899615a5a4efef2167c263488837c7beed023a64cebd051", size = 6974219, upload-time = "2021-10-29T14:25:19.463Z" },
+    { url = "https://files.pythonhosted.org/packages/36/66/19983d471c702e551a19a7225a92a7c1efadd961f6c650110ed906dd0ed7/PyQt5-5.15.6-cp36-abi3-manylinux1_x86_64.whl", hash = "sha256:9d6efad0377aa78bf081a20ac752ce86096ded18f04c592d98f5b92dc879ad0a", size = 8305724, upload-time = "2021-10-29T14:25:46.625Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/bd/7660caaa932063f627fabdf01a963f16149ef26d056027b1b538fe1e26ff/PyQt5-5.15.6-cp36-abi3-win32.whl", hash = "sha256:9d2dcdaf82263ae56023410a7af15d1fd746c8e361733a7d0d1bd1f004ec2793", size = 5346146, upload-time = "2021-10-29T14:26:05.049Z" },
+    { url = "https://files.pythonhosted.org/packages/be/f2/8e7b751d102ce3500cbeff97cb514eaf5c06d5e423676c37e9de28d0c06b/PyQt5-5.15.6-cp36-abi3-win_amd64.whl", hash = "sha256:f411ecda52e488e1d3c5cce7563e1b2ca9cf0b7531e3c25b03d9a7e56e07e7fc", size = 6749398, upload-time = "2021-10-29T14:26:27.508Z" },
+]
+
+[[package]]
+name = "pyqt5-qt5"
+version = "5.15.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/09/99a222b0360616250fb2e6003a54e43a2a06b0774f0f8d5daafb86a2c375/PyQt5_Qt5-5.15.2-py3-none-macosx_10_13_intel.whl", hash = "sha256:76980cd3d7ae87e3c7a33bfebfaee84448fd650bad6840471d6cae199b56e154", size = 40546019, upload-time = "2021-03-10T13:52:47.763Z" },
+    { url = "https://files.pythonhosted.org/packages/83/d4/241a6a518d0bcf0a9fcdcbad5edfed18d43e884317eab8d5230a2b27e206/PyQt5_Qt5-5.15.2-py3-none-manylinux2014_x86_64.whl", hash = "sha256:1988f364ec8caf87a6ee5d5a3a5210d57539988bf8e84714c7d60972692e2f4a", size = 59921716, upload-time = "2021-03-10T13:57:39.485Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/7e/ce7c66a541a105fa98b41d6405fe84940564695e29fc7dccf6d9e8c5f898/PyQt5_Qt5-5.15.2-py3-none-win32.whl", hash = "sha256:9cc7a768b1921f4b982ebc00a318ccb38578e44e45316c7a4a850e953e1dd327", size = 43447358, upload-time = "2021-03-10T14:01:17.827Z" },
+    { url = "https://files.pythonhosted.org/packages/37/97/5d3b222b924fa2ed4c2488925155cd0b03fd5d09ee1cfcf7c553c11c9f66/PyQt5_Qt5-5.15.2-py3-none-win_amd64.whl", hash = "sha256:750b78e4dba6bdf1607febedc08738e318ea09e9b10aea9ff0d73073f11f6962", size = 50075158, upload-time = "2021-03-10T14:05:20.868Z" },
+]
+
+[[package]]
+name = "pyqt5-sip"
+version = "12.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/5f/fd9384fdcb9cd0388088899c110838007f49f5da1dd1ef6749bfb728a5da/PyQt5_sip-12.11.0.tar.gz", hash = "sha256:b4710fd85b57edef716cc55fae45bfd5bfac6fc7ba91036f1dcc3f331ca0eb39", size = 122792, upload-time = "2022-06-18T11:46:07.567Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/0f/54228b287741959a486d0a38a6626e0ba0ffc7c1c8d4fab0951c77c11e3a/PyQt5_sip-12.11.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:bd733667098cac70e89279d9c239106d543fb480def62a44e6366ccb8f68510b", size = 142667, upload-time = "2022-10-28T16:16:19.915Z" },
+    { url = "https://files.pythonhosted.org/packages/84/43/f64bb816feb9bb9e02d472092199635c243ae86ba12e77528dac05eab8db/PyQt5_sip-12.11.0-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:ec1d8ce50be76c5c1d1c86c6dc0ccacc2446172dde98b663a17871f532f9bd44", size = 371045, upload-time = "2022-10-28T16:16:22.661Z" },
+    { url = "https://files.pythonhosted.org/packages/53/32/af0a7d44f0abfceae185134efa4ef65770eeac20f21239bdce4aee0460bd/PyQt5_sip-12.11.0-cp311-cp311-win32.whl", hash = "sha256:43dfe6dd409e713edeb67019b85419a7a0dc9923bfc451d6cf3778471c122532", size = 68568, upload-time = "2022-10-28T16:16:24.901Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/8c/00fee4ad4602c3cbf4b73e1b42a0bba1018005633ec7ef831db33dbbd80a/PyQt5_sip-12.11.0-cp311-cp311-win_amd64.whl", hash = "sha256:afa4ffffc54e306669bf2b66ea37abbc56c5cdda4f3f474d20324e3634302b12", size = 78290, upload-time = "2022-10-28T16:16:26.691Z" },
+]
+
+[[package]]
 name = "pyqtgraph"
 version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
@@ -192,27 +195,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ff/ef/db06cb3a6a760bd410781220a1c7301671e6c0f83c1cfac40e929749ca0e/qasync-0.23.0.tar.gz", hash = "sha256:8965ec313e0107148d98e8ac1e77a77dce74de3cd97055a1aa62d513a3793a14", size = 13448, upload-time = "2022-02-07T22:33:06.857Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/91/5116fb40d4bfb21378b38b5deb0b0d7c786864ca22fbe49e3b5ade280131/qasync-0.23.0-py3-none-any.whl", hash = "sha256:7968d3485678d2ebcb5d6cdfdd36515425a02062ca9db7bb2e0e6bd1aaad6ec1", size = 13973, upload-time = "2022-02-07T22:33:05.283Z" },
-]
-
-[[package]]
-name = "rpi-lgpio"
-version = "0.6"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "lgpio" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/6d/7b6cb0def16abda6af89d16a3363d4036501bf042f9c67668aad3b34927f/rpi_lgpio-0.6.tar.gz", hash = "sha256:84579b11d543bb8abdddc1e10fcd6bdc2819e5897be72d6949a2b044d71fb73e", size = 12723, upload-time = "2024-05-11T16:09:29.463Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/a9/06b843528e47ded0dd276537e9c56e7aec7c841b3b2749274e7d8121dab5/rpi_lgpio-0.6-py3-none-any.whl", hash = "sha256:0930b6e0ffbfbeee9366fbfa5038d29a7606be96a5229d570b1f81be8f776777", size = 11880, upload-time = "2024-05-11T16:09:27.75Z" },
-]
-
-[[package]]
-name = "setuptools"
-version = "82.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4f/db/cfac1baf10650ab4d1c111714410d2fbb77ac5a616db26775db562c8fab2/setuptools-82.0.1.tar.gz", hash = "sha256:7d872682c5d01cfde07da7bccc7b65469d3dca203318515ada1de5eda35efbf9", size = 1152316, upload-time = "2026-03-09T12:47:17.221Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl", hash = "sha256:a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb", size = 1006223, upload-time = "2026-03-09T12:47:15.026Z" },
 ]
 
 [[package]]
