@@ -270,7 +270,7 @@ class MorseGameWindow(QMainWindow):
             socket = os.path.join(xdg, display)
             if os.path.exists(socket):
                 env = {**os.environ, "WAYLAND_DISPLAY": display, "XDG_RUNTIME_DIR": xdg}
-                subprocess.call(["wlopm", f"--{action}", "*"], env=env)
+                subprocess.call(["wlopm", f"--{action}", "HDMI-A-1"], env=env)
                 break
 
     def closeEvent(self, event):
