@@ -1,288 +1,153 @@
-"""
-morse_game.py — Starter GUI for the EMG Morse Code Game
-
-Controls (keyboard, for development):
-  Space bar  → simulate EMG muscle contraction (press & hold = dash, tap = dot)
-
-On Raspberry Pi the gpiozero Button on GPIO_PIN replaces the keyboard so that
-a muscle contraction (EMG) drives the same press/release events.
-
-Timing:
-  Press duration < DOT_THRESHOLD ms  → dot  (.)
-  Press duration >= DOT_THRESHOLD ms → dash (-)
-  No input for LETTER_PAUSE ms after last symbol → submit guess
-"""
-
-import sys
-import random
-import glob
-import os
-import subprocess
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget,
-    QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-)
+import sys, random, glob, subprocess
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 
-# ── GPIO pins ─────────────────────────────────────────────────────────────────
-GPIO_PIN         = 22  # BCM pin for EMG / morse input button
-DISPLAY_BTN_PIN  = 6  # BCM pin for display on/off button (change as needed)
+GPIO_PIN        = 22
+DISPLAY_BTN_PIN = 6
+DOT_THRESHOLD   = 300   # ms — shorter press = dot, longer = dash
+LETTER_PAUSE    = 800   # ms silence → auto-submit
+
+MORSE = {
+    'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
+    'K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-',
+    'U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..',
+}
 
 try:
     from gpiozero import Button as GpioButton
-    _gpio_btn         = GpioButton(GPIO_PIN, pull_up=True)
-    _display_btn      = GpioButton(DISPLAY_BTN_PIN, pull_up=True)
-    GPIO_AVAILABLE    = True
+    _btn     = GpioButton(GPIO_PIN, pull_up=True)
+    _disp    = GpioButton(DISPLAY_BTN_PIN, pull_up=True)
+    GPIO_OK  = True
 except Exception:
-    _gpio_btn         = None
-    _display_btn      = None
-    GPIO_AVAILABLE    = False
+    _btn = _disp = None
+    GPIO_OK = False
 
-# ── Morse code table ──────────────────────────────────────────────────────────
-MORSE = {
-    'A': '.-',   'B': '-...', 'C': '-.-.', 'D': '-..',  'E': '.',
-    'F': '..-.', 'G': '--.',  'H': '....', 'I': '..',   'J': '.---',
-    'K': '-.-',  'L': '.-..', 'M': '--',   'N': '-.',   'O': '---',
-    'P': '.--.', 'Q': '--.-', 'R': '.-.',  'S': '...',  'T': '-',
-    'U': '..-',  'V': '...-', 'W': '.--',  'X': '-..-', 'Y': '-.--',
-    'Z': '--..',
-}
-
-# ── Timing constants (ms) ─────────────────────────────────────────────────────
-DOT_THRESHOLD = 300   # presses shorter than this are dots
-LETTER_PAUSE  = 800   # silence after last symbol triggers auto-submit
-
-
-class _GpioSignals(QObject):
+class _Sig(QObject):
     pressed  = pyqtSignal()
     released = pyqtSignal()
 
-_gpio_signals = _GpioSignals()
+_sig = _Sig()
 
 
-class MorseGameWindow(QMainWindow):
+class MorseGame(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("EMG Morse Code Game")
-        self.resize(500, 400)
+        self.resize(500, 380)
+        self.letter = ""
+        self.inp    = ""
+        self.score  = self.total = 0
+        self.running = False
+        self.disp_on = True
 
-        self.target_letter = ""
-        self.current_input = ""
-        self.score         = 0
-        self.total         = 0
-        self.game_running  = False
+        self._ptimer = QElapsedTimer()
+        self._pause  = QTimer(singleShot=True, timeout=self._submit)
+        self._result = QTimer(singleShot=True, timeout=self._next)
 
-        self._press_timer = QElapsedTimer()
-        self._pause_timer = QTimer()
-        self._pause_timer.setSingleShot(True)
-        self._pause_timer.timeout.connect(self._on_letter_pause)
+        self._build()
+        _sig.pressed.connect(self._press)
+        _sig.released.connect(self._release)
+        if GPIO_OK:
+            _btn.when_pressed  = _sig.pressed.emit
+            _btn.when_released = _sig.released.emit
+            _disp.when_pressed = self._toggle_display
 
-        self._result_timer = QTimer()
-        self._result_timer.setSingleShot(True)
-        self._result_timer.timeout.connect(self._next_letter)
+    def _build(self):
+        root = QWidget(); self.setCentralWidget(root)
+        v = QVBoxLayout(root); v.setContentsMargins(20,20,20,20); v.setSpacing(10)
 
+        h = QHBoxLayout()
+        self.score_lbl = QLabel("Score: 0 / 0"); h.addWidget(self.score_lbl)
+        v.addLayout(h)
 
-        self._build_ui()
+        v.addWidget(self._line())
 
-        _gpio_signals.pressed.connect(self._on_press)
-        _gpio_signals.released.connect(self._on_release)
+        self.target = QLabel("—", alignment=Qt.AlignCenter)
+        self.target.setFont(QFont("Courier", 72, QFont.Bold))
+        self.hint = QLabel("", alignment=Qt.AlignCenter)
+        self.hint.setFont(QFont("Courier", 22))
+        v.addWidget(self.target); v.addWidget(self.hint)
 
-        self.display_on = True
+        v.addWidget(self._line())
 
-        if GPIO_AVAILABLE:
-            _gpio_btn.when_pressed     = _gpio_signals.pressed.emit
-            _gpio_btn.when_released    = _gpio_signals.released.emit
-            _display_btn.when_pressed  = self._toggle_display
+        self.inp_lbl = QLabel("", alignment=Qt.AlignCenter)
+        self.inp_lbl.setFont(QFont("Courier", 28))
+        self.result_lbl = QLabel("", alignment=Qt.AlignCenter)
+        self.result_lbl.setMinimumHeight(24)
+        v.addWidget(self.inp_lbl); v.addWidget(self.result_lbl)
 
-    def _build_ui(self):
-        root = QWidget()
-        self.setCentralWidget(root)
-        main = QVBoxLayout(root)
-        main.setContentsMargins(20, 20, 20, 20)
-        main.setSpacing(12)
+        v.addWidget(self._line())
 
-        self.title_label = QLabel("EMG Morse Code Game")
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setFont(QFont("Helvetica", 18, QFont.Bold))
-        main.addWidget(self.title_label)
+        row = QHBoxLayout()
+        self.start_btn = QPushButton("Start"); self.start_btn.clicked.connect(self._start)
+        self.skip_btn  = QPushButton("Skip");  self.skip_btn.clicked.connect(self._next);  self.skip_btn.setEnabled(False)
+        self.reset_btn = QPushButton("Reset"); self.reset_btn.clicked.connect(self._reset); self.reset_btn.setEnabled(False)
+        for b in (self.start_btn, self.skip_btn, self.reset_btn): row.addWidget(b)
+        v.addLayout(row)
 
-        score_row = QHBoxLayout()
-        self.score_label = QLabel("Score: 0 / 0")
-        self.score_label.setFont(QFont("Helvetica", 11))
-        score_row.addWidget(self.score_label)
-        main.addLayout(score_row)
+    def _line(self):
+        f = QFrame(); f.setFrameShape(QFrame.HLine); f.setFrameShadow(QFrame.Sunken); return f
 
-        main.addWidget(self._hline())
+    def _start(self):
+        self.score = self.total = 0; self.running = True
+        self.start_btn.setEnabled(False); self.skip_btn.setEnabled(True); self.reset_btn.setEnabled(True)
+        self._next()
 
-        lbl_target = QLabel("Target Letter")
-        lbl_target.setAlignment(Qt.AlignCenter)
-        lbl_target.setFont(QFont("Helvetica", 11))
-        main.addWidget(lbl_target)
+    def _next(self):
+        self._pause.stop(); self._result.stop()
+        self.inp = ""; self.letter = random.choice(list(MORSE))
+        self.target.setText(self.letter); self.hint.setText(MORSE[self.letter])
+        self.inp_lbl.setText(""); self.result_lbl.setText("")
+        self.skip_btn.setEnabled(True); self._score()
 
-        self.target_display = QLabel("—")
-        self.target_display.setAlignment(Qt.AlignCenter)
-        self.target_display.setFont(QFont("Courier", 72, QFont.Bold))
-        main.addWidget(self.target_display)
+    def _reset(self):
+        self._pause.stop(); self._result.stop(); self.running = False
+        self.score = self.total = 0; self.inp = self.letter = ""
+        self.target.setText("—"); self.hint.setText("")
+        self.inp_lbl.setText(""); self.result_lbl.setText("")
+        self.score_lbl.setText("Score: 0 / 0")
+        self.start_btn.setEnabled(True); self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
 
-        self.morse_hint = QLabel("")
-        self.morse_hint.setAlignment(Qt.AlignCenter)
-        self.morse_hint.setFont(QFont("Courier", 22))
-        main.addWidget(self.morse_hint)
+    def _press(self):
+        if not self.running: return
+        self._pause.stop(); self._ptimer.start()
 
-        main.addWidget(self._hline())
-
-        lbl_input = QLabel("Your Input")
-        lbl_input.setAlignment(Qt.AlignCenter)
-        lbl_input.setFont(QFont("Helvetica", 11))
-        main.addWidget(lbl_input)
-
-        self.input_display = QLabel("")
-        self.input_display.setAlignment(Qt.AlignCenter)
-        self.input_display.setFont(QFont("Courier", 28))
-        main.addWidget(self.input_display)
-
-        self.result_label = QLabel("")
-        self.result_label.setAlignment(Qt.AlignCenter)
-        self.result_label.setFont(QFont("Helvetica", 13))
-        self.result_label.setMinimumHeight(28)
-        main.addWidget(self.result_label)
-
-        hint = QLabel("Press button to input  (tap = dot  |  hold = dash)  —  release after last symbol to submit")
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setFont(QFont("Helvetica", 9))
-        main.addWidget(hint)
-
-        main.addWidget(self._hline())
-
-        btn_row = QHBoxLayout()
-        self.start_btn = QPushButton("Start")
-        self.start_btn.clicked.connect(self._start_game)
-
-        self.skip_btn = QPushButton("Skip")
-        self.skip_btn.clicked.connect(self._next_letter)
-        self.skip_btn.setEnabled(False)
-
-        self.reset_btn = QPushButton("Reset")
-        self.reset_btn.clicked.connect(self._reset_game)
-        self.reset_btn.setEnabled(False)
-
-        btn_row.addWidget(self.start_btn)
-        btn_row.addWidget(self.skip_btn)
-        btn_row.addWidget(self.reset_btn)
-        main.addLayout(btn_row)
-
-
-    def _hline(self):
-        from PyQt5.QtWidgets import QFrame
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        return line
-
-    # ── Game logic ─────────────────────────────────────────────────────────────
-    def _start_game(self):
-        self.score = 0
-        self.total = 0
-        self.game_running = True
-        self.start_btn.setEnabled(False)
-        self.skip_btn.setEnabled(True)
-        self.reset_btn.setEnabled(True)
-        self._next_letter()
-
-    def _next_letter(self):
-        self._result_timer.stop()
-        self._pause_timer.stop()
-        self.current_input = ""
-        self.target_letter = random.choice(list(MORSE.keys()))
-        self.target_display.setText(self.target_letter)
-        self.morse_hint.setText(MORSE[self.target_letter])
-        self.input_display.setText("")
-        self.result_label.setText("")
-        self.skip_btn.setEnabled(True)
-        self._update_score_label()
-
-    def _reset_game(self):
-        self._pause_timer.stop()
-        self._result_timer.stop()
-        self.game_running = False
-        self.score = 0
-        self.total = 0
-        self.current_input = ""
-        self.target_letter = ""
-        self.target_display.setText("—")
-        self.morse_hint.setText("")
-        self.input_display.setText("")
-        self.result_label.setText("")
-        self.score_label.setText("Score: 0 / 0")
-        self.start_btn.setEnabled(True)
-        self.skip_btn.setEnabled(False)
-        self.reset_btn.setEnabled(False)
-
-    def _on_press(self):
-        if not self.game_running:
-            return
-        self._pause_timer.stop()
-        self._press_timer.start()
-
-    def _on_release(self):
-        if not self.game_running:
-            return
-        duration = self._press_timer.elapsed()
-        symbol = "." if duration < DOT_THRESHOLD else "-"
-        self.current_input += symbol
-        self.input_display.setText(self.current_input)
-        self._pause_timer.start(LETTER_PAUSE)
-
-    def _on_letter_pause(self):
-        if not self.current_input:
-            return
-        self._submit()
+    def _release(self):
+        if not self.running: return
+        self.inp += "." if self._ptimer.elapsed() < DOT_THRESHOLD else "-"
+        self.inp_lbl.setText(self.inp)
+        self._pause.start(LETTER_PAUSE)
 
     def _submit(self):
-        self._pause_timer.stop()
         self.total += 1
-        correct = MORSE.get(self.target_letter, "")
-        if self.current_input == correct:
-            self.score += 1
-            self._update_score_label()
-            self._next_letter()
-            return
+        correct = MORSE[self.letter]
+        if self.inp == correct:
+            self.score += 1; self._score(); self._next()
         else:
-            decoded = {v: k for k, v in MORSE.items()}.get(self.current_input, "?")
-            self.result_label.setText(
-                f"Wrong — got '{self.current_input}' ({decoded}), expected '{correct}'"
-            )
-        self._update_score_label()
-        self.skip_btn.setEnabled(False)
-        self._result_timer.start(1800)  # wrong answer: show feedback then advance
+            decoded = {v:k for k,v in MORSE.items()}.get(self.inp, "?")
+            self.result_lbl.setText(f"Wrong — got '{self.inp}' ({decoded}), expected '{correct}'")
+            self._score(); self.skip_btn.setEnabled(False); self._result.start(1800)
 
-    def _update_score_label(self):
-        pct = int(self.score / self.total * 100) if self.total else 0
-        self.score_label.setText(f"Score: {self.score} / {self.total}  ({pct}%)")
+    def _score(self):
+        pct = int(self.score/self.total*100) if self.total else 0
+        self.score_lbl.setText(f"Score: {self.score} / {self.total}  ({pct}%)")
 
     def _toggle_display(self):
-        self.display_on = not self.display_on
-        # DSI display backlight: 0 = on, 1 = off
-        # If PermissionError, run once: sudo chmod a+w /sys/class/backlight/*/bl_power
-        value = "0" if self.display_on else "1"
+        self.disp_on = not self.disp_on
+        val = "0" if self.disp_on else "1"
         for path in glob.glob("/sys/class/backlight/*/bl_power"):
             try:
-                with open(path, "w") as f:
-                    f.write(value)
+                open(path,"w").write(val)
             except PermissionError:
-                # fallback: try via sudo
-                subprocess.call(["sudo", "sh", "-c", f"echo {value} > {path}"])
+                subprocess.call(["sudo","sh","-c",f"echo {val} > {path}"])
 
-    def closeEvent(self, event):
-        if GPIO_AVAILABLE:
-            _gpio_btn.close()
-            _display_btn.close()
-        event.accept()
+    def closeEvent(self, e):
+        if GPIO_OK: _btn.close(); _disp.close()
+        e.accept()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MorseGameWindow()
-    window.show()
+    w = MorseGame(); w.show()
     sys.exit(app.exec())
