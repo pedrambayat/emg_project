@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
 )
-from PyQt5.QtCore import Qt, QTimer, QElapsedTimer
+from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 
 # ── GPIO / EMG input ──────────────────────────────────────────────────────────
@@ -48,6 +48,13 @@ DOT_THRESHOLD = 300   # presses shorter than this are dots
 LETTER_PAUSE  = 800   # silence after last symbol triggers auto-submit
 
 
+class _GpioSignals(QObject):
+    pressed  = pyqtSignal()
+    released = pyqtSignal()
+
+_gpio_signals = _GpioSignals()
+
+
 class MorseGameWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -71,9 +78,12 @@ class MorseGameWindow(QMainWindow):
 
         self._build_ui()
 
+        _gpio_signals.pressed.connect(self._on_press)
+        _gpio_signals.released.connect(self._on_release)
+
         if GPIO_AVAILABLE:
-            _gpio_btn.when_pressed  = self._on_press
-            _gpio_btn.when_released = self._on_release
+            _gpio_btn.when_pressed  = _gpio_signals.pressed.emit
+            _gpio_btn.when_released = _gpio_signals.released.emit
 
     def _build_ui(self):
         root = QWidget()
