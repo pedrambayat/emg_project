@@ -76,6 +76,10 @@ class MorseGameWindow(QMainWindow):
         self._result_timer.setSingleShot(True)
         self._result_timer.timeout.connect(self._next_letter)
 
+        self._dash_timer = QTimer()   # fires after DOT_THRESHOLD to flip indicator to dash
+        self._dash_timer.setSingleShot(True)
+        self._dash_timer.timeout.connect(self._indicator_dash)
+
         self._build_ui()
 
         _gpio_signals.pressed.connect(self._on_press)
@@ -142,6 +146,12 @@ class MorseGameWindow(QMainWindow):
         self.result_label.setMinimumHeight(28)
         main.addWidget(self.result_label)
 
+        self.live_indicator = QLabel("")
+        self.live_indicator.setAlignment(Qt.AlignCenter)
+        self.live_indicator.setFont(QFont("Courier", 36, QFont.Bold))
+        self.live_indicator.setMinimumHeight(48)
+        main.addWidget(self.live_indicator)
+
         hint = QLabel("Press button to input  (tap = dot  |  hold = dash)  —  release after last symbol to submit")
         hint.setAlignment(Qt.AlignCenter)
         hint.setFont(QFont("Helvetica", 9))
@@ -192,6 +202,7 @@ class MorseGameWindow(QMainWindow):
         self.morse_hint.setText(MORSE[self.target_letter])
         self.input_display.setText("")
         self.result_label.setText("")
+        self.live_indicator.setText("")
         self.skip_btn.setEnabled(True)
         self._update_score_label()
 
@@ -217,12 +228,19 @@ class MorseGameWindow(QMainWindow):
             return
         self._pause_timer.stop()
         self._press_timer.start()
+        self.live_indicator.setText(".")
+        self._dash_timer.start(DOT_THRESHOLD)
+
+    def _indicator_dash(self):
+        self.live_indicator.setText("-")
 
     def _on_release(self):
         if not self.game_running:
             return
+        self._dash_timer.stop()
         duration = self._press_timer.elapsed()
         symbol = "." if duration < DOT_THRESHOLD else "-"
+        self.live_indicator.setText("")
         self.current_input += symbol
         self.input_display.setText(self.current_input)
         self._pause_timer.start(LETTER_PAUSE)
