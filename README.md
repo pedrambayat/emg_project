@@ -66,3 +66,10 @@ uv run python Final_Starter_Code_Part_1.py
 ## Arduino
 
 Open `BLE_Arduino_EMG_Sender/BLE_Arduino_EMG_Sender.ino` in the Arduino IDE, set the `pennKey` variable to a unique identifier, then compile and upload to an Arduino MKR WiFi 1010.
+
+
+## Pi setup
+```bash
+export DISPLAY=:0
+chmod 0700 /run/user/1000
+```
