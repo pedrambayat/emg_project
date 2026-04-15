@@ -264,10 +264,14 @@ class MorseGameWindow(QMainWindow):
         self.display_on = not self.display_on
         # Pi OS Bookworm uses Wayland — wlopm controls display power.
         # Install with: sudo apt install wlopm
-        wayland_display = os.environ.get("WAYLAND_DISPLAY", "wayland-1")
-        env = {**os.environ, "WAYLAND_DISPLAY": wayland_display}
+        xdg = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
         action = "on" if self.display_on else "off"
-        subprocess.call(["wlopm", f"--{action}", "*"], env=env)
+        for display in ["wayland-1", "wayland-0"]:
+            socket = os.path.join(xdg, display)
+            if os.path.exists(socket):
+                env = {**os.environ, "WAYLAND_DISPLAY": display, "XDG_RUNTIME_DIR": xdg}
+                subprocess.call(["wlopm", f"--{action}", "*"], env=env)
+                break
 
     def closeEvent(self, event):
         if GPIO_AVAILABLE:
