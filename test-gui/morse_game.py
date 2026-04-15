@@ -57,12 +57,17 @@ class MorseGame(QMainWindow):
         root = QWidget(); self.setCentralWidget(root)
         v = QVBoxLayout(root); v.setContentsMargins(20,20,20,20); v.setSpacing(10)
 
+        title = QLabel("Morse Code Game", alignment=Qt.AlignCenter)
+        title.setFont(QFont("Helvetica", 18, QFont.Bold))
+        v.addWidget(title)
+
         h = QHBoxLayout()
         self.score_lbl = QLabel("Score: 0 / 0"); h.addWidget(self.score_lbl)
         v.addLayout(h)
 
         v.addWidget(self._line())
 
+        v.addWidget(QLabel("Your Letter", alignment=Qt.AlignCenter))
         self.target = QLabel("—", alignment=Qt.AlignCenter)
         self.target.setFont(QFont("Courier", 72, QFont.Bold))
         self.hint = QLabel("", alignment=Qt.AlignCenter)
@@ -71,6 +76,7 @@ class MorseGame(QMainWindow):
 
         v.addWidget(self._line())
 
+        v.addWidget(QLabel("Your Input", alignment=Qt.AlignCenter))
         self.inp_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.inp_lbl.setFont(QFont("Courier", 28))
         self.result_lbl = QLabel("", alignment=Qt.AlignCenter)
