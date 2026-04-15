@@ -15,6 +15,7 @@ Timing:
 
 import sys
 import random
+import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -22,16 +23,19 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 
-# ── GPIO / EMG input ──────────────────────────────────────────────────────────
-GPIO_PIN = 22  # BCM pin wired to the EMG trigger (change as needed)
+# ── GPIO pins ─────────────────────────────────────────────────────────────────
+GPIO_PIN         = 22  # BCM pin for EMG / morse input button
+DISPLAY_BTN_PIN  = 6  # BCM pin for display on/off button (change as needed)
 
 try:
     from gpiozero import Button as GpioButton
-    _gpio_btn = GpioButton(GPIO_PIN, pull_up=True)
-    GPIO_AVAILABLE = True
+    _gpio_btn         = GpioButton(GPIO_PIN, pull_up=True)
+    _display_btn      = GpioButton(DISPLAY_BTN_PIN, pull_up=True)
+    GPIO_AVAILABLE    = True
 except Exception:
-    _gpio_btn = None
-    GPIO_AVAILABLE = False
+    _gpio_btn         = None
+    _display_btn      = None
+    GPIO_AVAILABLE    = False
 
 # ── Morse code table ──────────────────────────────────────────────────────────
 MORSE = {
@@ -82,9 +86,12 @@ class MorseGameWindow(QMainWindow):
         _gpio_signals.pressed.connect(self._on_press)
         _gpio_signals.released.connect(self._on_release)
 
+        self.display_on = True
+
         if GPIO_AVAILABLE:
-            _gpio_btn.when_pressed  = _gpio_signals.pressed.emit
-            _gpio_btn.when_released = _gpio_signals.released.emit
+            _gpio_btn.when_pressed     = _gpio_signals.pressed.emit
+            _gpio_btn.when_released    = _gpio_signals.released.emit
+            _display_btn.when_pressed  = self._toggle_display
 
     def _build_ui(self):
         root = QWidget()
@@ -101,11 +108,7 @@ class MorseGameWindow(QMainWindow):
         score_row = QHBoxLayout()
         self.score_label = QLabel("Score: 0 / 0")
         self.score_label.setFont(QFont("Helvetica", 11))
-        gpio_lbl = QLabel("GPIO: on" if GPIO_AVAILABLE else "GPIO: off (keyboard mode)")
-        gpio_lbl.setFont(QFont("Helvetica", 11))
         score_row.addWidget(self.score_label)
-        score_row.addStretch()
-        score_row.addWidget(gpio_lbl)
         main.addLayout(score_row)
 
         main.addWidget(self._hline())
@@ -166,6 +169,7 @@ class MorseGameWindow(QMainWindow):
         btn_row.addWidget(self.skip_btn)
         btn_row.addWidget(self.reset_btn)
         main.addLayout(btn_row)
+
 
     def _hline(self):
         from PyQt5.QtWidgets import QFrame
@@ -255,9 +259,15 @@ class MorseGameWindow(QMainWindow):
         pct = int(self.score / self.total * 100) if self.total else 0
         self.score_label.setText(f"Score: {self.score} / {self.total}  ({pct}%)")
 
+    def _toggle_display(self):
+        self.display_on = not self.display_on
+        power = "1" if self.display_on else "0"
+        subprocess.call(["vcgencmd", "display_power", power])
+
     def closeEvent(self, event):
         if GPIO_AVAILABLE:
             _gpio_btn.close()
+            _display_btn.close()
         event.accept()
 
 
