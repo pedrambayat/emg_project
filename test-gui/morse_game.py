@@ -15,8 +15,9 @@ Timing:
 
 import sys
 import random
-import subprocess
+import glob
 import os
+import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -262,16 +263,16 @@ class MorseGameWindow(QMainWindow):
 
     def _toggle_display(self):
         self.display_on = not self.display_on
-        # Pi OS Bookworm uses Wayland — wlopm controls display power.
-        # Install with: sudo apt install wlopm
-        xdg = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
-        action = "on" if self.display_on else "off"
-        for display in ["wayland-1", "wayland-0"]:
-            socket = os.path.join(xdg, display)
-            if os.path.exists(socket):
-                env = {**os.environ, "WAYLAND_DISPLAY": display, "XDG_RUNTIME_DIR": xdg}
-                subprocess.call(["wlopm", f"--{action}", "HDMI-A-1"], env=env)
-                break
+        # DSI display backlight: 0 = on, 1 = off
+        # If PermissionError, run once: sudo chmod a+w /sys/class/backlight/*/bl_power
+        value = "0" if self.display_on else "1"
+        for path in glob.glob("/sys/class/backlight/*/bl_power"):
+            try:
+                with open(path, "w") as f:
+                    f.write(value)
+            except PermissionError:
+                # fallback: try via sudo
+                subprocess.call(["sudo", "sh", "-c", f"echo {value} > {path}"])
 
     def closeEvent(self, event):
         if GPIO_AVAILABLE:
