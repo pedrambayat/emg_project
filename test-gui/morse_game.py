@@ -239,7 +239,9 @@ class MorseGameWindow(QMainWindow):
         correct = MORSE.get(self.target_letter, "")
         if self.current_input == correct:
             self.score += 1
-            self.result_label.setText(f"Correct!  {self.current_input} = {self.target_letter}")
+            self._update_score_label()
+            self._next_letter()
+            return
         else:
             decoded = {v: k for k, v in MORSE.items()}.get(self.current_input, "?")
             self.result_label.setText(
@@ -247,7 +249,7 @@ class MorseGameWindow(QMainWindow):
             )
         self._update_score_label()
         self.skip_btn.setEnabled(False)
-        self._result_timer.start(1800)
+        self._result_timer.start(1800)  # wrong answer: show feedback then advance
 
     def _update_score_label(self):
         pct = int(self.score / self.total * 100) if self.total else 0
