@@ -9,10 +9,20 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 from PyQt5.QtCore import Qt
-hello#opentowork
-#opentotwerk
-shwgncallmebbyboo
-opinky up pinky up pinky up pinky up us againzt tbe worlx shaking ass in the parking lot 
+
+# gpiozero uses BCM pin numbering (the GPIO number printed on the Pi header).
+# If this script is run on a non-Pi machine, gpiozero is unavailable and we
+# fall back to a stub so the GUI still works for development/testing.
+GPIO_PIN = 12 # change to whichever BCM pin your LED is wired to
+
+try:
+    from gpiozero import LED as GpioLED
+    gpio_led = GpioLED(GPIO_PIN)
+    GPIO_AVAILABLE = True
+except Exception:
+    gpio_led = None
+    GPIO_AVAILABLE = False
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -47,8 +57,21 @@ class MainWindow(QMainWindow):
 
     def toggle_led(self):
         self.led_on = not self.led_on
+
+        if GPIO_AVAILABLE:
+            # gpiozero LED.on() / LED.off() drive the GPIO pin high/low
+            if self.led_on:
+                gpio_led.on()
+            else:
+                gpio_led.off()
+
         self.state_value.setText("ON" if self.led_on else "OFF")
-        # TODO: add hardware control here (e.g., GPIO or serial command)
+
+    def closeEvent(self, event):
+        # Release the GPIO pin cleanly when the window is closed
+        if GPIO_AVAILABLE:
+            gpio_led.close()
+        event.accept()
 
 
 if __name__ == "__main__":
