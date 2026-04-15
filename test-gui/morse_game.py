@@ -16,6 +16,7 @@ Timing:
 import sys
 import random
 import subprocess
+import os
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -261,8 +262,11 @@ class MorseGameWindow(QMainWindow):
 
     def _toggle_display(self):
         self.display_on = not self.display_on
-        power = "1" if self.display_on else "0"
-        subprocess.call(["vcgencmd", "display_power", power])
+        env = {**os.environ, "DISPLAY": ":0"}
+        if self.display_on:
+            subprocess.call(["xset", "dpms", "force", "on"], env=env)
+        else:
+            subprocess.call(["xset", "dpms", "force", "off"], env=env)
 
     def closeEvent(self, event):
         if GPIO_AVAILABLE:
