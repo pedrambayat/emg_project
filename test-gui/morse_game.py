@@ -63,6 +63,10 @@ class MorseGame(QMainWindow):
 
         h = QHBoxLayout()
         self.score_lbl = QLabel("Score: 0 / 0"); h.addWidget(self.score_lbl)
+        h.addStretch()
+        self.skip_btn  = QPushButton("Skip");  self.skip_btn.clicked.connect(self._next);  self.skip_btn.setEnabled(False)
+        self.reset_btn = QPushButton("Reset"); self.reset_btn.clicked.connect(self._reset); self.reset_btn.setEnabled(False)
+        h.addWidget(self.skip_btn); h.addWidget(self.reset_btn)
         v.addLayout(h)
 
         v.addWidget(self._line())
@@ -85,12 +89,8 @@ class MorseGame(QMainWindow):
 
         v.addWidget(self._line())
 
-        row = QHBoxLayout()
         self.start_btn = QPushButton("Start"); self.start_btn.clicked.connect(self._start)
-        self.skip_btn  = QPushButton("Skip");  self.skip_btn.clicked.connect(self._next);  self.skip_btn.setEnabled(False)
-        self.reset_btn = QPushButton("Reset"); self.reset_btn.clicked.connect(self._reset); self.reset_btn.setEnabled(False)
-        for b in (self.start_btn, self.skip_btn, self.reset_btn): row.addWidget(b)
-        v.addLayout(row)
+        v.addWidget(self.start_btn)
 
     def _line(self):
         f = QFrame(); f.setFrameShape(QFrame.HLine); f.setFrameShadow(QFrame.Sunken); return f
