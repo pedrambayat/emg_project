@@ -64,7 +64,7 @@ class MorseGame(QMainWindow):
         h = QHBoxLayout()
         self.score_lbl = QLabel("Score: 0 / 0"); h.addWidget(self.score_lbl)
         h.addStretch()
-        self.skip_btn  = QPushButton("Skip");  self.skip_btn.clicked.connect(self._next);  self.skip_btn.setEnabled(False)
+        self.skip_btn  = QPushButton("Skip");  self.skip_btn.clicked.connect(self._skip);  self.skip_btn.setEnabled(False)
         self.reset_btn = QPushButton("Reset"); self.reset_btn.clicked.connect(self._reset); self.reset_btn.setEnabled(False)
         h.addWidget(self.skip_btn); h.addWidget(self.reset_btn)
         v.addLayout(h)
@@ -107,13 +107,20 @@ class MorseGame(QMainWindow):
         self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.skip_btn.setEnabled(True); self._score()
 
+    def _skip(self):
+        self._pause.stop(); self._result.stop()
+        self.total += 1; self._score()
+        self.result_lbl.setText(f"Skipped — '{self.letter}' was '{MORSE[self.letter]}'")
+        self.skip_btn.setEnabled(False); self._result.start(1200)
+
     def _reset(self):
         self._pause.stop(); self._result.stop(); self.running = False
         self.score = self.total = 0; self.inp = self.letter = ""
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.score_lbl.setText("Score: 0 / 0")
-        self.start_btn.setEnabled(True); self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
+        self.start_btn.setText("Start"); self.start_btn.setEnabled(True)
+        self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
 
     def _press(self):
         if not self.running: return
