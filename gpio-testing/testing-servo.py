@@ -4,7 +4,7 @@ from time import sleep
 
 myFactory = PiGPIOFactory()
 
-servo_button = 5
+servo_button = 17
 
 servo = Servo(
     servo_button,
