@@ -1,4 +1,4 @@
-import sys, random, glob, subprocess
+import sys, random, glob, subprocess, json, os
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
@@ -7,6 +7,7 @@ GPIO_PIN        = 22
 DISPLAY_BTN_PIN = 6
 DOT_THRESHOLD   = 300   # ms — shorter press = dot, longer = dash
 LETTER_PAUSE    = 800   # ms silence → auto-submit
+HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -38,6 +39,7 @@ class MorseGame(QMainWindow):
         self.letter = ""
         self.inp    = ""
         self.score  = self.total = 0
+        self.hiscore, self.hipct = self._load_hiscore()
         self.running = False
         self.disp_on = True
 
@@ -46,6 +48,7 @@ class MorseGame(QMainWindow):
         self._result = QTimer(singleShot=True, timeout=self._next)
 
         self._build()
+        self._refresh_hi()
         _sig.pressed.connect(self._press)
         _sig.released.connect(self._release)
         if GPIO_OK:
@@ -62,7 +65,13 @@ class MorseGame(QMainWindow):
         v.addWidget(title)
 
         h = QHBoxLayout()
-        self.score_lbl = QLabel("Score: 0 / 0"); h.addWidget(self.score_lbl)
+        self.score_lbl = QLabel("Current Score: 0 / 0")
+        self.score_lbl.setFont(QFont("Helvetica", 11, QFont.Bold))
+        h.addWidget(self.score_lbl)
+        h.addSpacing(20)
+        self.hi_lbl = QLabel()
+        self.hi_lbl.setFont(QFont("Helvetica", 11, QFont.Bold))
+        h.addWidget(self.hi_lbl)
         h.addStretch()
         self.start_btn = QPushButton("Start"); self.start_btn.clicked.connect(self._start)
         self.skip_btn  = QPushButton("Skip");  self.skip_btn.clicked.connect(self._skip);  self.skip_btn.setEnabled(False)
@@ -115,7 +124,7 @@ class MorseGame(QMainWindow):
         self.score = self.total = 0; self.inp = self.letter = ""
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
-        self.score_lbl.setText("Score: 0 / 0")
+        self.score_lbl.setText("Current Score: 0 / 0")
         self.start_btn.setText("Start"); self.start_btn.setEnabled(True); self.start_btn.show()
         self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
 
@@ -141,7 +150,29 @@ class MorseGame(QMainWindow):
 
     def _score(self):
         pct = int(self.score/self.total*100) if self.total else 0
-        self.score_lbl.setText(f"Score: {self.score} / {self.total}  ({pct}%)")
+        self.score_lbl.setText(f"Current Score: {self.score} / {self.total}  ({pct}%)")
+        if self.score > self.hiscore or (self.score == self.hiscore and pct > self.hipct):
+            self.hiscore, self.hipct = self.score, pct
+            self._save_hiscore()
+        self._refresh_hi()
+
+    def _refresh_hi(self):
+        self.hi_lbl.setText(f"High Score: {self.hiscore} ({self.hipct}%)" if self.hiscore else "High Score: —")
+
+    def _load_hiscore(self):
+        try:
+            with open(HISCORE_PATH) as f:
+                d = json.load(f)
+                return int(d.get("score", 0)), int(d.get("pct", 0))
+        except Exception:
+            return 0, 0
+
+    def _save_hiscore(self):
+        try:
+            with open(HISCORE_PATH, "w") as f:
+                json.dump({"score": self.hiscore, "pct": self.hipct}, f)
+        except Exception:
+            pass
 
     def _toggle_display(self):
         self.disp_on = not self.disp_on
