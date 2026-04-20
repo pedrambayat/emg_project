@@ -8,7 +8,7 @@ DISPLAY_BTN_PIN = 6
 SERVO_PIN       = 17
 DOT_THRESHOLD   = 300   # ms — shorter press = dot, longer = dash
 LETTER_PAUSE    = 800   # ms silence → auto-submit
-LIVES           = 2     # wrong answers allowed before game over
+LIVES           = 3   # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
 MORSE = {
@@ -122,7 +122,7 @@ class MorseGame(QMainWindow):
 
         v.addWidget(QLabel("Your Input", alignment=Qt.AlignCenter))
         self.inp_lbl = QLabel("", alignment=Qt.AlignCenter)
-        self.inp_lbl.setFont(QFont("Courier", 28))
+        self.inp_lbl.setFont(QFont("Courier", 24))
         self.result_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.result_lbl.setMinimumHeight(24)
         v.addWidget(self.inp_lbl); v.addWidget(self.result_lbl)
@@ -187,7 +187,7 @@ class MorseGame(QMainWindow):
             self.score += 1; self._score(); self._next()
         else:
             decoded = {v:k for k,v in MORSE.items()}.get(self.inp, "?")
-            self.result_lbl.setText(f"Wrong — got '{self.inp}' ({decoded}), expected '{correct}'")
+            self.result_lbl.setText(f"Wrong! Got '{self.inp}' ({decoded}), expected '{correct}'")
             self.lives -= 1; self._refresh_lives(); self._servo_to_lives()
             self._score(); self.skip_btn.setEnabled(False)
             if self.lives <= 0:
