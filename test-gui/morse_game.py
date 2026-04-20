@@ -1,5 +1,5 @@
 import sys, random, glob, subprocess, json, os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 
@@ -40,6 +40,8 @@ class MorseGame(QMainWindow):
         self.inp    = ""
         self.score  = self.total = 0
         self.hiscore, self.hipct = self._load_hiscore()
+        self.challenge_hiscore, self.challenge_hipct = self._load_hiscore(challenge=True)
+        self.challenge = False
         self.running = False
         self.disp_on = True
 
@@ -79,6 +81,12 @@ class MorseGame(QMainWindow):
         h.addWidget(self.start_btn); h.addWidget(self.skip_btn); h.addWidget(self.reset_btn)
         v.addLayout(h)
 
+        h2 = QHBoxLayout()
+        self.challenge_cb = QCheckBox("Challenge Mode (hide morse hint)")
+        self.challenge_cb.toggled.connect(self._toggle_challenge)
+        h2.addWidget(self.challenge_cb); h2.addStretch()
+        v.addLayout(h2)
+
         v.addWidget(self._line())
 
         v.addWidget(QLabel("Your Letter", alignment=Qt.AlignCenter))
@@ -109,9 +117,19 @@ class MorseGame(QMainWindow):
     def _next(self):
         self._pause.stop(); self._result.stop()
         self.inp = ""; self.letter = random.choice(list(MORSE))
-        self.target.setText(self.letter); self.hint.setText(MORSE[self.letter])
+        self.target.setText(self.letter)
+        self.hint.setText("? ? ?" if self.challenge else MORSE[self.letter])
         self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.skip_btn.setEnabled(True); self._score()
+
+    def _toggle_challenge(self, on):
+        if self.running:
+            self.challenge_cb.blockSignals(True)
+            self.challenge_cb.setChecked(self.challenge)
+            self.challenge_cb.blockSignals(False)
+            return
+        self.challenge = on
+        self._refresh_hi()
 
     def _skip(self):
         self._pause.stop(); self._result.stop()
@@ -151,26 +169,48 @@ class MorseGame(QMainWindow):
     def _score(self):
         pct = int(self.score/self.total*100) if self.total else 0
         self.score_lbl.setText(f"Current Score: {self.score} / {self.total}  ({pct}%)")
-        if self.score > self.hiscore or (self.score == self.hiscore and pct > self.hipct):
-            self.hiscore, self.hipct = self.score, pct
-            self._save_hiscore()
+        hs, hp = (self.challenge_hiscore, self.challenge_hipct) if self.challenge else (self.hiscore, self.hipct)
+        if self.score > hs or (self.score == hs and pct > hp):
+            if self.challenge:
+                self.challenge_hiscore, self.challenge_hipct = self.score, pct
+            else:
+                self.hiscore, self.hipct = self.score, pct
+            self._save_hiscore(self.challenge)
         self._refresh_hi()
 
     def _refresh_hi(self):
-        self.hi_lbl.setText(f"High Score: {self.hiscore} ({self.hipct}%)" if self.hiscore else "High Score: —")
+        hs, hp = (self.challenge_hiscore, self.challenge_hipct) if self.challenge else (self.hiscore, self.hipct)
+        label = "Challenge High" if self.challenge else "High Score"
+        self.hi_lbl.setText(f"{label}: {hs} ({hp}%)" if hs else f"{label}: —")
 
-    def _load_hiscore(self):
+    def _load_hiscore(self, challenge=False):
+        key = "challenge" if challenge else "normal"
         try:
             with open(HISCORE_PATH) as f:
                 d = json.load(f)
-                return int(d.get("score", 0)), int(d.get("pct", 0))
+                sub = d.get(key, {})
+                if not sub and not challenge and "score" in d:
+                    sub = d
+                return int(sub.get("score", 0)), int(sub.get("pct", 0))
         except Exception:
             return 0, 0
 
-    def _save_hiscore(self):
+    def _save_hiscore(self, challenge=False):
         try:
+            data = {}
+            try:
+                with open(HISCORE_PATH) as f:
+                    data = json.load(f)
+                    if "score" in data and "normal" not in data:
+                        data = {"normal": {"score": data.get("score", 0), "pct": data.get("pct", 0)}}
+            except Exception:
+                data = {}
+            data["challenge" if challenge else "normal"] = {
+                "score": self.challenge_hiscore if challenge else self.hiscore,
+                "pct":   self.challenge_hipct   if challenge else self.hipct,
+            }
             with open(HISCORE_PATH, "w") as f:
-                json.dump({"score": self.hiscore, "pct": self.hipct}, f)
+                json.dump(data, f)
         except Exception:
             pass
 
