@@ -119,7 +119,7 @@ class MorseGame(QMainWindow):
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.score_lbl.setText("Score: 0 / 0")
-        self.start_btn.setText("Start"); self.start_btn.setEnabled(True)
+        self.start_btn.setText("Start"); self.start_btn.setEnabled(True); self.start_btn.show()
         self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
 
     def _press(self):
