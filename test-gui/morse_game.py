@@ -8,7 +8,7 @@ DISPLAY_BTN_PIN = 6
 SERVO_PIN       = 17
 DOT_THRESHOLD   = 300   # ms — shorter press = dot, longer = dash
 LETTER_PAUSE    = 800   # ms silence → auto-submit
-LIVES           = 5     # wrong answers allowed before game over
+LIVES           = 2     # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
 MORSE = {
@@ -256,8 +256,8 @@ class MorseGame(QMainWindow):
 
     def _game_over(self):
         self._pause.stop(); self._result.stop(); self.running = False
-        self.result_lbl.setText(f"💀 GAME OVER — final score {self.score}/{self.total}")
-        self.target.setText("✗"); self.hint.setText("")
+        self.result_lbl.setText(f"GAME OVER :( — final score {self.score}/{self.total}")
+        self.target.setText("u suck lol"); self.hint.setText("")
         self.skip_btn.setEnabled(False)
         self.start_btn.setText("Start"); self.start_btn.setEnabled(True)
 
