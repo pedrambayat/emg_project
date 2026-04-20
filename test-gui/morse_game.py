@@ -36,7 +36,7 @@ class MorseGame(QMainWindow):
         super().__init__()
         self.setWindowTitle("EMG Morse Code Game")
         screen = QApplication.primaryScreen().availableGeometry()
-        self.setGeometry(screen)
+        self.setGeometry(screen.x(), screen.y(), screen.width(), int(screen.height() * 0.75))
         self.letter = ""
         self.inp    = ""
         self.score  = self.total = 0
