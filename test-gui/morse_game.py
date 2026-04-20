@@ -34,7 +34,7 @@ class MorseGame(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("EMG Morse Code Game")
-        self.resize(500, 380)
+        self.resize(500, 560)
         self.letter = ""
         self.inp    = ""
         self.score  = self.total = 0
@@ -90,6 +90,7 @@ class MorseGame(QMainWindow):
         v.addWidget(self._line())
 
         self.start_btn = QPushButton("Start"); self.start_btn.clicked.connect(self._start)
+        self.start_btn.setMinimumHeight(40)
         v.addWidget(self.start_btn)
 
     def _line(self):
