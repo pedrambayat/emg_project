@@ -2,7 +2,6 @@ import sys, random, glob, subprocess, json, os, asyncio
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
-import numpy as np
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 import qasync
@@ -27,13 +26,8 @@ HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mor
 BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "10:52:1C:5F:BE:EA")
 BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
 BLE_ENABLED             = os.getenv("EMG_USE_BLE", "1") != "0"
-BLE_CHAR_UUID           = "5212ddd0-29e5-11eb-adc1-0242ac120002"
+BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
-EMG_BASELINE_ALPHA      = 0.08
-EMG_ENVELOPE_ALPHA      = 0.35
-EMG_RELEASE_PACKETS     = 2
-EMG_ON_THRESHOLD = 35
-EMG_OFF_THRESHOLD = 15
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -89,10 +83,7 @@ class MorseGame(QMainWindow):
         self._client = None
         self._ble_task = None
         self._closing = False
-        self._emg_baseline = None
-        self._emg_level = 0.0
         self._emg_active = False
-        self._emg_low_packets = 0
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -317,12 +308,13 @@ class MorseGame(QMainWindow):
 
     def _set_ble_status(self, text):
         self.ble_status = text
-        level_text = f" | EMG level {self._emg_level:.1f}" if self.ble_enabled else ""
-        self.input_lbl.setText(f"{self.ble_status}{level_text}")
+        input_state = "ACTIVE" if self._emg_active else "IDLE"
+        suffix = f" | Input {input_state}" if self.ble_enabled else ""
+        self.input_lbl.setText(f"{self.ble_status}{suffix}")
 
     def _reset_emg_gate(self):
         self._emg_active = False
-        self._emg_low_packets = 0
+        self._set_ble_status(self.ble_status)
 
     def _start_ble(self):
         if self._ble_task is None:
@@ -339,7 +331,7 @@ class MorseGame(QMainWindow):
                 self._set_ble_status("BLE: connecting")
                 self._client = BleakClient(device)
                 await self._client.connect()
-                await self._client.start_notify(BLE_CHAR_UUID, self._handle_emg_packet)
+                await self._client.start_notify(BLE_CONTROL_CHAR_UUID, self._handle_control_state)
                 name = getattr(device, "name", None) or BLE_DEVICE_NAME or "EMG device"
                 self._set_ble_status(f"BLE: connected to {name}")
 
@@ -366,52 +358,34 @@ class MorseGame(QMainWindow):
                 return device
         return None
 
-    def _handle_emg_packet(self, characteristic: BleakGATTCharacteristic, data: bytearray):
-        samples = np.frombuffer(bytes(data), dtype=np.uint8).astype(np.float32)
-        if samples.size == 0:
+    def _handle_control_state(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+        if not data:
             return
 
-        packet_mean = float(samples.mean())
-        if self._emg_baseline is None:
-            self._emg_baseline = packet_mean
+        active = bool(data[0])
+        if active == self._emg_active:
+            self._set_ble_status(self.ble_status)
+            return
 
-        if not self._emg_active:
-            self._emg_baseline = (
-                (1.0 - EMG_BASELINE_ALPHA) * self._emg_baseline
-                + EMG_BASELINE_ALPHA * packet_mean
-            )
-
-        packet_level = float(np.mean(np.abs(samples - self._emg_baseline)))
-        self._emg_level = (
-            (1.0 - EMG_ENVELOPE_ALPHA) * self._emg_level
-            + EMG_ENVELOPE_ALPHA * packet_level
-        )
-        self._set_ble_status(self.ble_status.split(" | ")[0])
-
-        if not self._emg_active:
-            if self._emg_level >= EMG_ON_THRESHOLD:
-                self._emg_active = True
-                self._emg_low_packets = 0
-                _sig.pressed.emit()
+        self._emg_active = active
+        self._set_ble_status(self.ble_status)
+        if active:
+            _sig.pressed.emit()
         else:
-            if self._emg_level <= EMG_OFF_THRESHOLD:
-                self._emg_low_packets += 1
-            else:
-                self._emg_low_packets = 0
-
-            if self._emg_low_packets >= EMG_RELEASE_PACKETS:
-                self._emg_active = False
-                self._emg_low_packets = 0
-                _sig.released.emit()
+            _sig.released.emit()
 
     async def _disconnect_ble(self):
         client, self._client = self._client, None
+        if self._emg_active:
+            self._emg_active = False
+            _sig.released.emit()
+            self._set_ble_status(self.ble_status)
         if client is None:
             return
         try:
             if client.is_connected:
                 try:
-                    await client.stop_notify(BLE_CHAR_UUID)
+                    await client.stop_notify(BLE_CONTROL_CHAR_UUID)
                 except Exception:
                     pass
                 await client.disconnect()
