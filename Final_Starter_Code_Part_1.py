@@ -203,7 +203,7 @@ class MyApp(QWidget):
         Called whenever the user manually or force quits the application.
         Will disconnect from the BLE device and will terminate any async tasks
         """
-        self.handle_stop()s
+        self.handle_stop()
         super().closeEvent(event)
         for task in asyncio.all_tasks():
             task.cancel()
