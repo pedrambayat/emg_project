@@ -31,9 +31,9 @@ BLE_CHAR_UUID           = "5212ddd0-29e5-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
 EMG_BASELINE_ALPHA      = 0.08
 EMG_ENVELOPE_ALPHA      = 0.35
-EMG_ON_THRESHOLD        = 40.0
-EMG_OFF_THRESHOLD       = 15.0
 EMG_RELEASE_PACKETS     = 2
+EMG_ON_THRESHOLD = 35
+EMG_OFF_THRESHOLD = 15
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
