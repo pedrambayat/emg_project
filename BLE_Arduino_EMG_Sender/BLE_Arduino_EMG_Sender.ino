@@ -18,6 +18,12 @@
 //Establish the students penn key to be used in the device and local names of the BLE peripheral
 char pennKey[]                  =           "pbayat";                       // a short unique identifier
 
+// Hardware-filtered EMG thresholds for the Morse control state.
+// When the filtered signal rises above CONTROL_ON_THRESHOLD the control state becomes pressed.
+// It stays pressed until the signal falls below CONTROL_OFF_THRESHOLD.
+const byte CONTROL_ON_THRESHOLD  =           150;
+const byte CONTROL_OFF_THRESHOLD =           135;
+
 ///////////////////////////////////////// END EDITABLE REGION ///////////////////////////////////////////////
 
 // The portions of the device and local names which will be combined with pennKey
@@ -25,6 +31,7 @@ char nameD[]                    =           "MKR1010_";
 char nameL[]                    =           "EMG_Sender_";
 
 BLEDescriptor charDescriptor("2901", "EMG Data");
+BLEDescriptor controlDescriptor("2901", "EMG Control State");
 
 
 // Establish Sampling with desired 1kHz Sample Rate
@@ -46,6 +53,7 @@ const int readPin                 =           A3;                       // Estab
 
 char BLE_UUID_SENSOR_SERVICE[]           =             "386a83e2-28fa-11eb-adc1-0242ac120002";
 char BLE_UUID_SENSOR_CHAR[]              =             "5212ddd0-29e5-11eb-adc1-0242ac120002";
+char BLE_UUID_CONTROL_CHAR[]             =             "5212ddd1-29e5-11eb-adc1-0242ac120002";
 
 //creating new data type multi_reading_data to store multiple readings in an array like structure
 union multi_reading_data
@@ -62,8 +70,20 @@ union multi_reading_data multiReadingData;
 // create the BLE objects
 BLEService sensorService( BLE_UUID_SENSOR_SERVICE );
 BLECharacteristic sensorChar( BLE_UUID_SENSOR_CHAR, BLERead | BLENotify, sizeof multiReadingData.bytes );
+BLECharacteristic controlChar( BLE_UUID_CONTROL_CHAR, BLERead | BLENotify, 1 );
 
 uint32_t i = 0;                                                         // index location of the next element to add to the multi_reading_data array
+byte controlState = 0;
+
+void updateControlState(byte analogValueByte)
+{
+  bool nextState = controlState ? (analogValueByte >= CONTROL_OFF_THRESHOLD) : (analogValueByte >= CONTROL_ON_THRESHOLD);
+  if (nextState != controlState)
+  {
+    controlState = nextState ? 1 : 0;
+    controlChar.writeValue(&controlState, 1);
+  }
+}
 
 void setup()
 {
@@ -96,6 +116,7 @@ void loop()
         {
           tStart += SAMPLE_PD; // reset start time to take next sample at exactly the correct pd
           byte analogValueByte = analogRead(readPin);
+          updateControlState(analogValueByte);
           multiReadingData.values[i] = analogValueByte;
           i++;
           if (i >= NUMBER_OF_READINGS)
@@ -158,12 +179,15 @@ void setupBLE(char* nameD, char* nameL)
   // BLE add characteristics
   sensorService.addCharacteristic(sensorChar);
   sensorChar.addDescriptor(charDescriptor);
+  sensorService.addCharacteristic(controlChar);
+  controlChar.addDescriptor(controlDescriptor);
 
   // add service
   BLE.addService(sensorService);
 
   // set the initial value for the characteristic:
   sensorChar.writeValue( multiReadingData.bytes, sizeof multiReadingData.bytes );
+  controlChar.writeValue( &controlState, 1 );
 
   // start advertising
   BLE.advertise();

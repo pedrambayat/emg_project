@@ -29,8 +29,7 @@ The main behavior is controlled by constants at the top of the file:
 - `BLE_ENABLED`: turns BLE EMG control on or off
 - `BLE_ADDRESS`: optional direct BLE address
 - `BLE_DEVICE_NAME`: advertised device name, such as `EMG_Sender_pbayat`
-- `EMG_ON_THRESHOLD` / `EMG_OFF_THRESHOLD`: thresholds used to detect muscle activation
-- `EMG_RELEASE_PACKETS`: how many low BLE packets in a row count as release
+- `BLE_CONTROL_CHAR_UUID`: BLE characteristic that carries the button-like control state
 
 The `MORSE` dictionary defines the supported alphabet. Right now it includes `A-Z`.
 
@@ -41,7 +40,7 @@ At import time, the script tries to create:
 - a GPIO button for Morse input
 - a GPIO button for toggling the display
 - a servo for showing remaining lives
-- an optional BLE client for EMG streaming
+- an optional BLE client for EMG control-state streaming
 
 If that setup fails, the game falls back safely:
 
@@ -69,13 +68,13 @@ The game uses two timers:
 - `QElapsedTimer` measures how long the button was held
 - `QTimer` waits for a pause between button presses
 
-If BLE mode is enabled, the game also processes incoming EMG packets from the Arduino:
+If BLE mode is enabled, the game subscribes to a button-like control characteristic from the Arduino:
 
-1. raw `0-255` samples arrive over BLE
-2. the code estimates a baseline
-3. it computes a smoothed activity level from the absolute deviation
-4. crossing the `EMG_ON_THRESHOLD` emits a virtual press
-5. dropping below `EMG_OFF_THRESHOLD` for enough packets emits a virtual release
+1. the Arduino still streams raw EMG for plotting
+2. the Arduino also publishes a second BLE characteristic with state `0` or `1`
+3. `1` means "pressed"
+4. `0` means "released"
+5. the Python game maps those directly onto `_sig.pressed` and `_sig.released`
 
 Flow:
 
@@ -114,8 +113,6 @@ Edit these constants near the top of the file:
 - Increase `DOT_THRESHOLD` if dots are being read as dashes
 - Increase `LETTER_PAUSE` if players need more time between symbols
 - Increase or decrease `LIVES` to make the game easier or harder
-- Raise `EMG_ON_THRESHOLD` if noise is causing false presses
-- Raise `EMG_OFF_THRESHOLD` or `EMG_RELEASE_PACKETS` if releases are too jittery
 
 Example:
 
@@ -123,8 +120,6 @@ Example:
 DOT_THRESHOLD = 400
 LETTER_PAUSE = 1200
 LIVES = 5
-EMG_ON_THRESHOLD = 22.0
-EMG_OFF_THRESHOLD = 12.0
 ```
 
 ### Change the letters or add numbers
@@ -174,7 +169,7 @@ The clean extension point is the `_sig` signal bridge:
 Anything that emits those signals can drive the game. That means you can replace the GPIO button with:
 
 - a keyboard key
-- BLE EMG input
+- BLE button-state input
 - EMG threshold events
 - a custom USB controller
 
@@ -208,6 +203,20 @@ To force the old GPIO button behavior:
 ```bash
 EMG_USE_BLE=0 uv run python test-gui/morse_game.py
 ```
+
+## Arduino Control State
+
+`BLE_Arduino_EMG_Sender/BLE_Arduino_EMG_Sender.ino` now exposes two BLE characteristics in the same service:
+
+- raw EMG samples for plotting
+- a one-byte control state for the Morse game
+
+The Arduino decides the control state using two thresholds:
+
+- `CONTROL_ON_THRESHOLD`: signal level required to enter the pressed state
+- `CONTROL_OFF_THRESHOLD`: lower threshold required to leave the pressed state
+
+That small hysteresis window prevents rapid toggling near the boundary while keeping Python simple.
 
 ## Running the Game
 
