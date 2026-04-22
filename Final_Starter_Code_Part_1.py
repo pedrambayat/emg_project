@@ -30,7 +30,7 @@ if platform == "win32":
     """
 
 # BLE peripheral ID
-ADDRESS = "80:7D:3A:85:E8:C6" # EDIT THIS VARIABLE MAC ADB7175A-EA74-39E6-0F89-5B7EDC7FBC3D | Windows B0:B2:1C:57:5B:EE
+ADDRESS = "10:52:1C:5F:BE:EA" # EDIT THIS VARIABLE MAC ADB7175A-EA74-39E6-0F89-5B7EDC7FBC3D | Windows B0:B2:1C:57:5B:EE
 
 '''DO NOT EDIT ANYTHING BELOW THIS for Part 1'''
 # UART_CHAR_UUID = "34E49D7D-23F4-49FA-F025-CE6578F447B1"
@@ -194,7 +194,7 @@ class MyApp(QWidget):
             vals (lint (int)): the newest set of 50 points
         """
         self.storedData.append(vals)
-        plotData= np.ravel(self.storedData)  # unpacks the list of lists into one list 
+        plotData= np.ravel(self.storedData[-5:])  # unpacks the list of lists into one list 
         self.curve.setData(plotData)
 
     
@@ -203,7 +203,7 @@ class MyApp(QWidget):
         Called whenever the user manually or force quits the application.
         Will disconnect from the BLE device and will terminate any async tasks
         """
-        self.handle_stop()
+        self.handle_stop()s
         super().closeEvent(event)
         for task in asyncio.all_tasks():
             task.cancel()

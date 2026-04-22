@@ -10,9 +10,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-# gpiozero uses BCM pin numbering (the GPIO number printed on the Pi header).
-# If this script is run on a non-Pi machine, gpiozero is unavailable and we
-# fall back to a stub so the GUI still works for development/testing.
 GPIO_PIN = 12 # change to whichever BCM pin your LED is wired to
 
 try:
