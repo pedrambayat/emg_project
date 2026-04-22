@@ -6,7 +6,12 @@ This document explains how `test-gui/morse_game.py` works and which parts are me
 
 `morse_game.py` is a PyQt5 desktop game that teaches Morse code. The app shows a target letter, waits for the player to enter dots and dashes, then checks whether the input matches the correct Morse pattern.
 
-It is built for Raspberry Pi hardware, but the GUI still opens on a normal laptop if `gpiozero` is unavailable.
+It supports two input modes:
+
+- a GPIO button on Raspberry Pi
+- BLE EMG input streamed from `BLE_Arduino_EMG_Sender`
+
+The GUI still opens on a normal laptop if `gpiozero` is unavailable.
 
 ## How It Works
 
@@ -21,6 +26,11 @@ The main behavior is controlled by constants at the top of the file:
 - `LETTER_PAUSE`: silence timeout before the current input is auto-submitted
 - `LIVES`: number of wrong answers allowed
 - `HISCORE_PATH`: JSON file used to save high scores
+- `BLE_ENABLED`: turns BLE EMG control on or off
+- `BLE_ADDRESS`: optional direct BLE address
+- `BLE_DEVICE_NAME`: advertised device name, such as `EMG_Sender_pbayat`
+- `EMG_ON_THRESHOLD` / `EMG_OFF_THRESHOLD`: thresholds used to detect muscle activation
+- `EMG_RELEASE_PACKETS`: how many low BLE packets in a row count as release
 
 The `MORSE` dictionary defines the supported alphabet. Right now it includes `A-Z`.
 
@@ -31,11 +41,13 @@ At import time, the script tries to create:
 - a GPIO button for Morse input
 - a GPIO button for toggling the display
 - a servo for showing remaining lives
+- an optional BLE client for EMG streaming
 
 If that setup fails, the game falls back safely:
 
 - `GPIO_OK = False` means no physical button input
 - `SERVO_OK = False` means the game still runs, but the servo is ignored
+- BLE reconnects automatically if the Arduino is missing or disconnects
 
 ### 3. GUI Setup
 
@@ -56,6 +68,14 @@ The game uses two timers:
 
 - `QElapsedTimer` measures how long the button was held
 - `QTimer` waits for a pause between button presses
+
+If BLE mode is enabled, the game also processes incoming EMG packets from the Arduino:
+
+1. raw `0-255` samples arrive over BLE
+2. the code estimates a baseline
+3. it computes a smoothed activity level from the absolute deviation
+4. crossing the `EMG_ON_THRESHOLD` emits a virtual press
+5. dropping below `EMG_OFF_THRESHOLD` for enough packets emits a virtual release
 
 Flow:
 
@@ -94,6 +114,8 @@ Edit these constants near the top of the file:
 - Increase `DOT_THRESHOLD` if dots are being read as dashes
 - Increase `LETTER_PAUSE` if players need more time between symbols
 - Increase or decrease `LIVES` to make the game easier or harder
+- Raise `EMG_ON_THRESHOLD` if noise is causing false presses
+- Raise `EMG_OFF_THRESHOLD` or `EMG_RELEASE_PACKETS` if releases are too jittery
 
 Example:
 
@@ -101,6 +123,8 @@ Example:
 DOT_THRESHOLD = 400
 LETTER_PAUSE = 1200
 LIVES = 5
+EMG_ON_THRESHOLD = 22.0
+EMG_OFF_THRESHOLD = 12.0
 ```
 
 ### Change the letters or add numbers
@@ -150,7 +174,7 @@ The clean extension point is the `_sig` signal bridge:
 Anything that emits those signals can drive the game. That means you can replace the GPIO button with:
 
 - a keyboard key
-- BLE input
+- BLE EMG input
 - EMG threshold events
 - a custom USB controller
 
@@ -164,6 +188,26 @@ If you do not want the extra Pi hardware behavior:
 - ignore `_servo_to_lives()` or remove servo setup entirely
 
 The game logic does not depend on either feature.
+
+### Configure BLE EMG input
+
+The default BLE device name matches the Arduino sketch in this repo:
+
+```bash
+EMG_USE_BLE=1 uv run python test-gui/morse_game.py
+```
+
+If you want to target a specific peripheral:
+
+```bash
+EMG_USE_BLE=1 EMG_BLE_ADDRESS="80:7D:3A:85:E8:C6" uv run python test-gui/morse_game.py
+```
+
+To force the old GPIO button behavior:
+
+```bash
+EMG_USE_BLE=0 uv run python test-gui/morse_game.py
+```
 
 ## Running the Game
 

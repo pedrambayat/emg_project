@@ -1,7 +1,20 @@
-import sys, random, glob, subprocess, json, os
+import sys, random, glob, subprocess, json, os, asyncio
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
+import numpy as np
+from bleak import BleakClient, BleakScanner
+from bleak.backends.characteristic import BleakGATTCharacteristic
+import qasync
+
+from sys import platform
+
+if platform == "win32":
+    try:
+        from bleak.backends.winrt.util import allow_sta
+        allow_sta()
+    except ImportError:
+        pass
 
 GPIO_PIN        = 22
 DISPLAY_BTN_PIN = 6
@@ -10,6 +23,17 @@ DOT_THRESHOLD   = 300   # ms — shorter press = dot, longer = dash
 LETTER_PAUSE    = 800   # ms silence → auto-submit
 LIVES           = 3   # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
+
+BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "10:52:1C:5F:BE:EA")
+BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
+BLE_ENABLED             = os.getenv("EMG_USE_BLE", "1") != "0"
+BLE_CHAR_UUID           = "5212ddd0-29e5-11eb-adc1-0242ac120002"
+BLE_RETRY_SECONDS       = 2.0
+EMG_BASELINE_ALPHA      = 0.08
+EMG_ENVELOPE_ALPHA      = 0.35
+EMG_ON_THRESHOLD        = 18.0
+EMG_OFF_THRESHOLD       = 10.0
+EMG_RELEASE_PACKETS     = 2
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -60,6 +84,15 @@ class MorseGame(QMainWindow):
         self.lives = LIVES
         self.running = False
         self.disp_on = True
+        self.ble_enabled = BLE_ENABLED
+        self.ble_status = "BLE: idle"
+        self._client = None
+        self._ble_task = None
+        self._closing = False
+        self._emg_baseline = None
+        self._emg_level = 0.0
+        self._emg_active = False
+        self._emg_low_packets = 0
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -72,9 +105,15 @@ class MorseGame(QMainWindow):
         _sig.pressed.connect(self._press)
         _sig.released.connect(self._release)
         if GPIO_OK:
-            _btn.when_pressed  = _sig.pressed.emit
-            _btn.when_released = _sig.released.emit
+            if not self.ble_enabled:
+                _btn.when_pressed  = _sig.pressed.emit
+                _btn.when_released = _sig.released.emit
             _disp.when_pressed = self._toggle_display
+        if self.ble_enabled:
+            self._set_ble_status("BLE: waiting to connect")
+            QTimer.singleShot(0, self._start_ble)
+        else:
+            self._set_ble_status("Input: GPIO button")
 
     def _build(self):
         root = QWidget(); self.setCentralWidget(root)
@@ -109,6 +148,10 @@ class MorseGame(QMainWindow):
         h2.addWidget(self.challenge_cb); h2.addStretch()
         v.addLayout(h2)
 
+        self.input_lbl = QLabel("", alignment=Qt.AlignCenter)
+        self.input_lbl.setFont(QFont("Helvetica", 10))
+        v.addWidget(self.input_lbl)
+
         v.addWidget(self._line())
 
         v.addWidget(QLabel("Your Letter", alignment=Qt.AlignCenter))
@@ -133,6 +176,7 @@ class MorseGame(QMainWindow):
 
     def _start(self):
         self.score = self.total = 0; self.lives = LIVES; self.running = True
+        self._reset_emg_gate()
         self._refresh_lives(); self._servo_to_lives()
         self.start_btn.setEnabled(False); self.skip_btn.setEnabled(True); self.reset_btn.setEnabled(True)
         self._next()
@@ -163,6 +207,7 @@ class MorseGame(QMainWindow):
     def _reset(self):
         self._pause.stop(); self._result.stop(); self.running = False
         self.score = self.total = 0; self.lives = LIVES; self.inp = self.letter = ""
+        self._reset_emg_gate()
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.score_lbl.setText("Current Score: 0 / 0")
@@ -270,7 +315,124 @@ class MorseGame(QMainWindow):
             except PermissionError:
                 subprocess.call(["sudo","sh","-c",f"echo {val} > {path}"])
 
+    def _set_ble_status(self, text):
+        self.ble_status = text
+        level_text = f" | EMG level {self._emg_level:.1f}" if self.ble_enabled else ""
+        self.input_lbl.setText(f"{self.ble_status}{level_text}")
+
+    def _reset_emg_gate(self):
+        self._emg_active = False
+        self._emg_low_packets = 0
+
+    def _start_ble(self):
+        if self._ble_task is None:
+            self._ble_task = asyncio.create_task(self._ble_loop())
+
+    async def _ble_loop(self):
+        while not self._closing:
+            try:
+                self._set_ble_status("BLE: scanning")
+                device = await self._find_ble_device()
+                if device is None:
+                    raise RuntimeError("EMG peripheral not found")
+
+                self._set_ble_status("BLE: connecting")
+                self._client = BleakClient(device)
+                await self._client.connect()
+                await self._client.start_notify(BLE_CHAR_UUID, self._handle_emg_packet)
+                name = getattr(device, "name", None) or BLE_DEVICE_NAME or "EMG device"
+                self._set_ble_status(f"BLE: connected to {name}")
+
+                while self._client.is_connected and not self._closing:
+                    await asyncio.sleep(0.2)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                self._set_ble_status(f"BLE: {exc}")
+            finally:
+                await self._disconnect_ble()
+
+            if not self._closing:
+                self._set_ble_status(f"BLE: retrying in {BLE_RETRY_SECONDS:.0f}s")
+                await asyncio.sleep(BLE_RETRY_SECONDS)
+
+    async def _find_ble_device(self):
+        if BLE_ADDRESS:
+            return await BleakScanner.find_device_by_address(BLE_ADDRESS, timeout=5.0)
+
+        devices = await BleakScanner.discover(timeout=5.0)
+        for device in devices:
+            if device.name == BLE_DEVICE_NAME:
+                return device
+        return None
+
+    def _handle_emg_packet(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+        samples = np.frombuffer(bytes(data), dtype=np.uint8).astype(np.float32)
+        if samples.size == 0:
+            return
+
+        packet_mean = float(samples.mean())
+        if self._emg_baseline is None:
+            self._emg_baseline = packet_mean
+
+        if not self._emg_active:
+            self._emg_baseline = (
+                (1.0 - EMG_BASELINE_ALPHA) * self._emg_baseline
+                + EMG_BASELINE_ALPHA * packet_mean
+            )
+
+        packet_level = float(np.mean(np.abs(samples - self._emg_baseline)))
+        self._emg_level = (
+            (1.0 - EMG_ENVELOPE_ALPHA) * self._emg_level
+            + EMG_ENVELOPE_ALPHA * packet_level
+        )
+        self._set_ble_status(self.ble_status.split(" | ")[0])
+
+        if not self._emg_active:
+            if self._emg_level >= EMG_ON_THRESHOLD:
+                self._emg_active = True
+                self._emg_low_packets = 0
+                _sig.pressed.emit()
+        else:
+            if self._emg_level <= EMG_OFF_THRESHOLD:
+                self._emg_low_packets += 1
+            else:
+                self._emg_low_packets = 0
+
+            if self._emg_low_packets >= EMG_RELEASE_PACKETS:
+                self._emg_active = False
+                self._emg_low_packets = 0
+                _sig.released.emit()
+
+    async def _disconnect_ble(self):
+        client, self._client = self._client, None
+        if client is None:
+            return
+        try:
+            if client.is_connected:
+                try:
+                    await client.stop_notify(BLE_CHAR_UUID)
+                except Exception:
+                    pass
+                await client.disconnect()
+        except Exception:
+            pass
+
+    async def shutdown(self):
+        self._closing = True
+        if self._ble_task is not None:
+            self._ble_task.cancel()
+            try:
+                await self._ble_task
+            except asyncio.CancelledError:
+                pass
+            self._ble_task = None
+        await self._disconnect_ble()
+
     def closeEvent(self, e):
+        self._closing = True
+        if self._ble_task is not None:
+            asyncio.create_task(self.shutdown())
         if GPIO_OK: _btn.close(); _disp.close()
         if SERVO_OK:
             try: _servo.detach(); _servo.close()
@@ -280,5 +442,10 @@ class MorseGame(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    w = MorseGame(); w.show()
-    sys.exit(app.exec())
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
+    w = MorseGame()
+    app.aboutToQuit.connect(lambda: asyncio.create_task(w.shutdown()))
+    w.show()
+    with loop:
+        loop.run_forever()
