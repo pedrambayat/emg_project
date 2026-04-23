@@ -37,6 +37,8 @@ EMG_SPREAD_ON           = int(os.getenv("EMG_SPREAD_ON", "18"))
 EMG_SPREAD_OFF          = int(os.getenv("EMG_SPREAD_OFF", "10"))
 EMG_SPREAD_MARGIN_ON    = int(os.getenv("EMG_SPREAD_MARGIN_ON", "6"))
 EMG_SPREAD_MARGIN_OFF   = int(os.getenv("EMG_SPREAD_MARGIN_OFF", "3"))
+EMG_ON_PACKETS          = int(os.getenv("EMG_ON_PACKETS", "2"))
+EMG_OFF_PACKETS         = int(os.getenv("EMG_OFF_PACKETS", "3"))
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -111,6 +113,8 @@ class MorseGame(QMainWindow):
         self._spread_off_threshold = EMG_SPREAD_OFF
         self._ble_control_edges_seen = 0
         self._ble_control_active = False
+        self._above_on_packets = 0
+        self._below_off_packets = 0
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -375,6 +379,7 @@ class MorseGame(QMainWindow):
                 f" | smooth/idle {self._smoothed_spread if self._smoothed_spread is not None else 'n/a'}"
                 f"/{self._idle_spread if self._idle_spread is not None else 'n/a'}"
                 f" | on/off {self._spread_on_threshold}/{self._spread_off_threshold}"
+                f" | pkt {self._above_on_packets}/{self._below_off_packets}"
             )
         else:
             control_text += f" | BLE control edges seen {self._ble_control_edges_seen}"
@@ -390,6 +395,8 @@ class MorseGame(QMainWindow):
         self._input_pressed = False
         self._ptimer.invalidate()
         self._last_press_ms = None
+        self._above_on_packets = 0
+        self._below_off_packets = 0
         self._set_ble_status(self.ble_status)
 
     def _set_effective_input_state(self, active):
@@ -497,11 +504,20 @@ class MorseGame(QMainWindow):
         self._spread_off_threshold = max(EMG_SPREAD_OFF, int(self._idle_spread + EMG_SPREAD_MARGIN_OFF))
 
         if EMG_CONTROL_SOURCE == "raw":
-            active = (
-                self._smoothed_spread >= self._spread_off_threshold
-                if self._emg_active
-                else self._smoothed_spread >= self._spread_on_threshold
-            )
+            if self._emg_active:
+                if self._smoothed_spread < self._spread_off_threshold:
+                    self._below_off_packets += 1
+                else:
+                    self._below_off_packets = 0
+                self._above_on_packets = 0
+                active = self._below_off_packets < EMG_OFF_PACKETS
+            else:
+                if self._smoothed_spread >= self._spread_on_threshold:
+                    self._above_on_packets += 1
+                else:
+                    self._above_on_packets = 0
+                self._below_off_packets = 0
+                active = self._above_on_packets >= EMG_ON_PACKETS
             self._set_effective_input_state(active)
             return
 
