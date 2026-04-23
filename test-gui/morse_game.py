@@ -48,6 +48,14 @@ MORSE = {
     'U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..',
 }
 
+CORRECT_MESSAGES = [
+    "Nice. '{letter}' is '{morse}'.",
+    "Clean hit: '{letter}' = '{morse}'.",
+    "Yup. '{letter}' was '{morse}'.",
+    "Correct. '{letter}' is '{morse}'.",
+    "Good stuff. '{letter}' = '{morse}'.",
+]
+
 try:
     from gpiozero import Button as GpioButton
     _btn     = GpioButton(GPIO_PIN, pull_up=True)
@@ -99,6 +107,7 @@ class MorseGame(QMainWindow):
         self._emg_active = False
         self._input_pressed = False
         self._ble_control_active = False
+        self._pending_result_text = ""
         self._emg_window = deque(maxlen=EMG_AVG_WINDOW_SAMPLES)
         self._emg_window_sum = 0.0
         self._emg_mavg = None
@@ -201,7 +210,8 @@ class MorseGame(QMainWindow):
         self.inp = ""; self.letter = random.choice(list(MORSE))
         self.target.setText(self.letter)
         self.hint.setText("? ? ?" if self.challenge else MORSE[self.letter])
-        self.inp_lbl.setText(""); self.result_lbl.setText("")
+        self.inp_lbl.setText(""); self.result_lbl.setText(self._pending_result_text)
+        self._pending_result_text = ""
         self.skip_btn.setEnabled(True); self._score()
 
     def _toggle_challenge(self, on):
@@ -222,6 +232,7 @@ class MorseGame(QMainWindow):
     def _reset(self):
         self._pause.stop(); self._result.stop(); self.running = False
         self.score = self.total = 0; self.lives = LIVES; self.inp = self.letter = ""
+        self._pending_result_text = ""
         self._reset_input_gate()
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
@@ -247,12 +258,17 @@ class MorseGame(QMainWindow):
             return
         self.inp += "." if press_ms < DOT_THRESHOLD else "-"
         self.inp_lbl.setText(self.inp)
+        if self.running and self.letter and self.inp == MORSE[self.letter]:
+            self._pause.stop()
+            self._submit()
+            return
         self._pause.start(LETTER_PAUSE)
 
     def _submit(self):
         self.total += 1
         correct = MORSE[self.letter]
         if self.inp == correct:
+            self._pending_result_text = random.choice(CORRECT_MESSAGES).format(letter=self.letter, morse=correct)
             self.score += 1; self._score(); self._next()
         else:
             decoded = {v:k for k,v in MORSE.items()}.get(self.inp, "?")
