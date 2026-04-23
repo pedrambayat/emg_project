@@ -27,9 +27,16 @@ HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mor
 BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "10:52:1C:5F:BE:EA")
 BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
 BLE_ENABLED             = os.getenv("EMG_USE_BLE", "1") != "0"
+EMG_CONTROL_SOURCE      = os.getenv("EMG_CONTROL_SOURCE", "raw").lower()
 BLE_SENSOR_CHAR_UUID    = "5212ddd0-29e5-11eb-adc1-0242ac120002"
 BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
+EMG_SPREAD_ALPHA        = float(os.getenv("EMG_SPREAD_ALPHA", "0.35"))
+EMG_IDLE_ALPHA          = float(os.getenv("EMG_IDLE_ALPHA", "0.05"))
+EMG_SPREAD_ON           = int(os.getenv("EMG_SPREAD_ON", "18"))
+EMG_SPREAD_OFF          = int(os.getenv("EMG_SPREAD_OFF", "10"))
+EMG_SPREAD_MARGIN_ON    = int(os.getenv("EMG_SPREAD_MARGIN_ON", "6"))
+EMG_SPREAD_MARGIN_OFF   = int(os.getenv("EMG_SPREAD_MARGIN_OFF", "3"))
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -97,6 +104,13 @@ class MorseGame(QMainWindow):
         self._last_raw_max = None
         self._last_raw_avg = None
         self._last_raw_at = None
+        self._last_raw_spread = None
+        self._smoothed_spread = None
+        self._idle_spread = None
+        self._spread_on_threshold = EMG_SPREAD_ON
+        self._spread_off_threshold = EMG_SPREAD_OFF
+        self._ble_control_edges_seen = 0
+        self._ble_control_active = False
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -347,13 +361,23 @@ class MorseGame(QMainWindow):
         if self._last_raw_min is not None:
             raw_text = (
                 f"EMG raw min/max/avg {self._last_raw_min}/{self._last_raw_max}/{self._last_raw_avg}"
+                f" | spread {self._last_raw_spread}"
                 f" | age {raw_age_ms} ms"
             )
         control_text = (
-            f"Control edges {self._control_edges}"
+            f"Input source {EMG_CONTROL_SOURCE}"
+            f" | effective edges {self._control_edges}"
             f" | press/release {self._press_events}/{self._release_events}"
             f" | last edge {edge_age_ms if edge_age_ms is not None else 'n/a'} ms ago"
         )
+        if EMG_CONTROL_SOURCE == "raw":
+            control_text += (
+                f" | smooth/idle {self._smoothed_spread if self._smoothed_spread is not None else 'n/a'}"
+                f"/{self._idle_spread if self._idle_spread is not None else 'n/a'}"
+                f" | on/off {self._spread_on_threshold}/{self._spread_off_threshold}"
+            )
+        else:
+            control_text += f" | BLE control edges seen {self._ble_control_edges_seen}"
         press_text = (
             f"Press ms {self._last_press_ms if self._last_press_ms is not None else 'n/a'}"
             f" | ignored<{MIN_PRESS_MS}ms {self._ignored_presses}"
@@ -365,7 +389,26 @@ class MorseGame(QMainWindow):
         self._emg_active = False
         self._input_pressed = False
         self._ptimer.invalidate()
+        self._last_press_ms = None
         self._set_ble_status(self.ble_status)
+
+    def _set_effective_input_state(self, active):
+        if active == self._emg_active:
+            self._refresh_diagnostics()
+            return
+
+        self._emg_active = active
+        self._control_edges += 1
+        self._last_edge_at = time.monotonic()
+        if active:
+            self._press_events += 1
+        else:
+            self._release_events += 1
+        self._set_ble_status(self.ble_status)
+        if active:
+            _sig.pressed.emit()
+        else:
+            _sig.released.emit()
 
     def _start_ble(self):
         if self._ble_task is None:
@@ -415,22 +458,13 @@ class MorseGame(QMainWindow):
             return
 
         active = bool(data[0])
-        if active == self._emg_active:
-            self._refresh_diagnostics()
-            return
-
-        self._emg_active = active
-        self._control_edges += 1
-        self._last_edge_at = time.monotonic()
-        if active:
-            self._press_events += 1
-        else:
-            self._release_events += 1
-        self._set_ble_status(self.ble_status)
-        if active:
-            _sig.pressed.emit()
-        else:
-            _sig.released.emit()
+        if active != self._ble_control_active:
+            self._ble_control_active = active
+            self._ble_control_edges_seen += 1
+            if EMG_CONTROL_SOURCE == "ble":
+                self._set_effective_input_state(active)
+                return
+        self._refresh_diagnostics()
 
     def _handle_emg_data(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         if not data:
@@ -441,6 +475,36 @@ class MorseGame(QMainWindow):
         self._last_raw_max = max(vals)
         self._last_raw_avg = int(sum(vals) / len(vals))
         self._last_raw_at = time.monotonic()
+        self._last_raw_spread = self._last_raw_max - self._last_raw_min
+
+        if self._smoothed_spread is None:
+            self._smoothed_spread = float(self._last_raw_spread)
+        else:
+            self._smoothed_spread = (
+                (1.0 - EMG_SPREAD_ALPHA) * self._smoothed_spread
+                + EMG_SPREAD_ALPHA * self._last_raw_spread
+            )
+
+        if self._idle_spread is None:
+            self._idle_spread = float(self._smoothed_spread)
+        elif not self._emg_active:
+            self._idle_spread = (
+                (1.0 - EMG_IDLE_ALPHA) * self._idle_spread
+                + EMG_IDLE_ALPHA * self._smoothed_spread
+            )
+
+        self._spread_on_threshold = max(EMG_SPREAD_ON, int(self._idle_spread + EMG_SPREAD_MARGIN_ON))
+        self._spread_off_threshold = max(EMG_SPREAD_OFF, int(self._idle_spread + EMG_SPREAD_MARGIN_OFF))
+
+        if EMG_CONTROL_SOURCE == "raw":
+            active = (
+                self._smoothed_spread >= self._spread_off_threshold
+                if self._emg_active
+                else self._smoothed_spread >= self._spread_on_threshold
+            )
+            self._set_effective_input_state(active)
+            return
+
         self._refresh_diagnostics()
 
     async def _disconnect_ble(self):
