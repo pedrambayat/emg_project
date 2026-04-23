@@ -1,4 +1,4 @@
-import sys, random, glob, subprocess, json, os, asyncio, time
+import sys, random, glob, subprocess, json, os, asyncio
 from collections import deque
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
@@ -98,17 +98,6 @@ class MorseGame(QMainWindow):
         self._closing = False
         self._emg_active = False
         self._input_pressed = False
-        self._last_press_ms = None
-        self._ignored_presses = 0
-        self._control_edges = 0
-        self._press_events = 0
-        self._release_events = 0
-        self._last_edge_at = None
-        self._last_raw_min = None
-        self._last_raw_max = None
-        self._last_raw_avg = None
-        self._last_raw_at = None
-        self._ble_control_edges_seen = 0
         self._ble_control_active = False
         self._emg_window = deque(maxlen=EMG_AVG_WINDOW_SAMPLES)
         self._emg_window_sum = 0.0
@@ -119,8 +108,6 @@ class MorseGame(QMainWindow):
         self._segment_total_samples = 0
         self._segment_above_samples = 0
         self._segment_below_gap_samples = 0
-        self._segment_last_duration_ms = None
-        self._segment_last_ratio = None
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -179,10 +166,6 @@ class MorseGame(QMainWindow):
         self.input_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.input_lbl.setFont(QFont("Helvetica", 10))
         v.addWidget(self.input_lbl)
-        self.diag_lbl = QLabel("", alignment=Qt.AlignCenter)
-        self.diag_lbl.setFont(QFont("Courier", 10))
-        self.diag_lbl.setWordWrap(True)
-        v.addWidget(self.diag_lbl)
 
         v.addWidget(self._line())
 
@@ -257,13 +240,10 @@ class MorseGame(QMainWindow):
         self._input_pressed = False
         self._append_symbol(self._ptimer.elapsed())
         self._ptimer.invalidate()
-        self._refresh_diagnostics()
 
     def _append_symbol(self, press_ms):
-        self._last_press_ms = int(press_ms)
         self._ptimer.invalidate()
         if press_ms < MIN_PRESS_MS:
-            self._ignored_presses += 1
             return
         self.inp += "." if press_ms < DOT_THRESHOLD else "-"
         self.inp_lbl.setText(self.inp)
@@ -364,52 +344,15 @@ class MorseGame(QMainWindow):
         input_state = "ACTIVE" if self._emg_active else "IDLE"
         suffix = f" | Input {input_state}" if self.ble_enabled else ""
         self.input_lbl.setText(f"{self.ble_status}{suffix}")
-        self._refresh_diagnostics()
-
-    def _refresh_diagnostics(self):
-        raw_age_ms = None if self._last_raw_at is None else int((time.monotonic() - self._last_raw_at) * 1000)
-        edge_age_ms = None if self._last_edge_at is None else int((time.monotonic() - self._last_edge_at) * 1000)
-        raw_text = "EMG raw: waiting"
-        if self._last_raw_min is not None:
-            raw_text = (
-                f"EMG raw min/max/avg {self._last_raw_min}/{self._last_raw_max}/{self._last_raw_avg}"
-                f" | age {raw_age_ms} ms"
-            )
-        control_text = (
-            f"Input source {EMG_CONTROL_SOURCE}"
-            f" | symbols {self._control_edges}"
-            f" | press/release {self._press_events}/{self._release_events}"
-            f" | last edge {edge_age_ms if edge_age_ms is not None else 'n/a'} ms ago"
-        )
-        if EMG_CONTROL_SOURCE == "raw":
-            control_text += (
-                f" | avg/base/thr "
-                f"{int(self._emg_mavg) if self._emg_mavg is not None else 'n/a'}"
-                f"/{int(self._emg_baseline) if self._emg_baseline is not None else 'n/a'}"
-                f"/{int(self._emg_threshold) if self._emg_threshold is not None else 'n/a'}"
-            )
-        else:
-            control_text += f" | BLE control edges seen {self._ble_control_edges_seen}"
-        press_text = (
-            f"Press ms {self._last_press_ms if self._last_press_ms is not None else 'n/a'}"
-            f" | ignored<{MIN_PRESS_MS}ms {self._ignored_presses}"
-            f" | dot<{DOT_THRESHOLD}ms"
-            f" | seg ms/ratio {self._segment_last_duration_ms if self._segment_last_duration_ms is not None else 'n/a'}"
-            f"/{self._segment_last_ratio if self._segment_last_ratio is not None else 'n/a'}"
-        )
-        self.diag_lbl.setText(f"{raw_text}\n{control_text}\n{press_text}")
 
     def _reset_input_gate(self):
         self._emg_active = False
         self._input_pressed = False
         self._ptimer.invalidate()
-        self._last_press_ms = None
         self._segment_active = False
         self._segment_total_samples = 0
         self._segment_above_samples = 0
         self._segment_below_gap_samples = 0
-        self._segment_last_duration_ms = None
-        self._segment_last_ratio = None
         self._emg_window.clear()
         self._emg_window_sum = 0.0
         self._emg_mavg = None
@@ -419,16 +362,9 @@ class MorseGame(QMainWindow):
 
     def _set_effective_input_state(self, active):
         if active == self._emg_active:
-            self._refresh_diagnostics()
             return
 
         self._emg_active = active
-        self._control_edges += 1
-        self._last_edge_at = time.monotonic()
-        if active:
-            self._press_events += 1
-        else:
-            self._release_events += 1
         self._set_ble_status(self.ble_status)
         if active:
             _sig.pressed.emit()
@@ -485,11 +421,9 @@ class MorseGame(QMainWindow):
         active = bool(data[0])
         if active != self._ble_control_active:
             self._ble_control_active = active
-            self._ble_control_edges_seen += 1
             if EMG_CONTROL_SOURCE == "ble":
                 self._set_effective_input_state(active)
-                return
-        self._refresh_diagnostics()
+        return
 
     def _process_emg_sample(self, sample):
         if len(self._emg_window) == self._emg_window.maxlen:
@@ -520,7 +454,7 @@ class MorseGame(QMainWindow):
                 self._segment_above_samples = 1
                 self._segment_below_gap_samples = 0
                 self._emg_active = True
-                self._press_events += 1
+                self._set_ble_status(self.ble_status)
             return
 
         self._segment_total_samples += 1
@@ -536,40 +470,27 @@ class MorseGame(QMainWindow):
         effective_samples = self._segment_total_samples - self._segment_below_gap_samples
         duration_ms = int(effective_samples * 1000 / EMG_SAMPLE_RATE)
         ratio = round(self._segment_above_samples / effective_samples, 2) if effective_samples > 0 else 0.0
-        self._segment_last_duration_ms = duration_ms
-        self._segment_last_ratio = ratio
 
         if effective_samples > 0 and ratio >= EMG_ACTIVE_RATIO:
-            self._control_edges += 1
-            self._release_events += 1
-            self._last_edge_at = time.monotonic()
             self._append_symbol(duration_ms)
-        else:
-            self._ignored_presses += 1
 
         self._segment_active = False
         self._segment_total_samples = 0
         self._segment_above_samples = 0
         self._segment_below_gap_samples = 0
         self._emg_active = False
+        self._set_ble_status(self.ble_status)
 
     def _handle_emg_data(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         if not data:
             return
 
         vals = list(data)
-        self._last_raw_min = min(vals)
-        self._last_raw_max = max(vals)
-        self._last_raw_avg = int(sum(vals) / len(vals))
-        self._last_raw_at = time.monotonic()
-
         if EMG_CONTROL_SOURCE == "raw":
             for sample in vals:
                 self._process_emg_sample(sample)
             self._set_ble_status(self.ble_status)
             return
-
-        self._refresh_diagnostics()
 
     async def _disconnect_ble(self):
         client, self._client = self._client, None
