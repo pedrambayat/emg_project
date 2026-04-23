@@ -1,4 +1,4 @@
-import sys, random, glob, subprocess, json, os, asyncio
+import sys, random, glob, subprocess, json, os, asyncio, time
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
@@ -27,6 +27,7 @@ HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mor
 BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "10:52:1C:5F:BE:EA")
 BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
 BLE_ENABLED             = os.getenv("EMG_USE_BLE", "1") != "0"
+BLE_SENSOR_CHAR_UUID    = "5212ddd0-29e5-11eb-adc1-0242ac120002"
 BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
 
@@ -86,6 +87,16 @@ class MorseGame(QMainWindow):
         self._closing = False
         self._emg_active = False
         self._input_pressed = False
+        self._last_press_ms = None
+        self._ignored_presses = 0
+        self._control_edges = 0
+        self._press_events = 0
+        self._release_events = 0
+        self._last_edge_at = None
+        self._last_raw_min = None
+        self._last_raw_max = None
+        self._last_raw_avg = None
+        self._last_raw_at = None
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -144,6 +155,10 @@ class MorseGame(QMainWindow):
         self.input_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.input_lbl.setFont(QFont("Helvetica", 10))
         v.addWidget(self.input_lbl)
+        self.diag_lbl = QLabel("", alignment=Qt.AlignCenter)
+        self.diag_lbl.setFont(QFont("Courier", 10))
+        self.diag_lbl.setWordWrap(True)
+        v.addWidget(self.diag_lbl)
 
         v.addWidget(self._line())
 
@@ -217,12 +232,16 @@ class MorseGame(QMainWindow):
         if not self.running or not self._input_pressed: return
         self._input_pressed = False
         press_ms = self._ptimer.elapsed()
+        self._last_press_ms = press_ms
         self._ptimer.invalidate()
         if press_ms < MIN_PRESS_MS:
+            self._ignored_presses += 1
+            self._refresh_diagnostics()
             return
         self.inp += "." if press_ms < DOT_THRESHOLD else "-"
         self.inp_lbl.setText(self.inp)
         self._pause.start(LETTER_PAUSE)
+        self._refresh_diagnostics()
 
     def _submit(self):
         self.total += 1
@@ -319,6 +338,28 @@ class MorseGame(QMainWindow):
         input_state = "ACTIVE" if self._emg_active else "IDLE"
         suffix = f" | Input {input_state}" if self.ble_enabled else ""
         self.input_lbl.setText(f"{self.ble_status}{suffix}")
+        self._refresh_diagnostics()
+
+    def _refresh_diagnostics(self):
+        raw_age_ms = None if self._last_raw_at is None else int((time.monotonic() - self._last_raw_at) * 1000)
+        edge_age_ms = None if self._last_edge_at is None else int((time.monotonic() - self._last_edge_at) * 1000)
+        raw_text = "EMG raw: waiting"
+        if self._last_raw_min is not None:
+            raw_text = (
+                f"EMG raw min/max/avg {self._last_raw_min}/{self._last_raw_max}/{self._last_raw_avg}"
+                f" | age {raw_age_ms} ms"
+            )
+        control_text = (
+            f"Control edges {self._control_edges}"
+            f" | press/release {self._press_events}/{self._release_events}"
+            f" | last edge {edge_age_ms if edge_age_ms is not None else 'n/a'} ms ago"
+        )
+        press_text = (
+            f"Press ms {self._last_press_ms if self._last_press_ms is not None else 'n/a'}"
+            f" | ignored<{MIN_PRESS_MS}ms {self._ignored_presses}"
+            f" | dot<{DOT_THRESHOLD}ms"
+        )
+        self.diag_lbl.setText(f"{raw_text}\n{control_text}\n{press_text}")
 
     def _reset_input_gate(self):
         self._emg_active = False
@@ -341,6 +382,7 @@ class MorseGame(QMainWindow):
                 self._set_ble_status("BLE: connecting")
                 self._client = BleakClient(device)
                 await self._client.connect()
+                await self._client.start_notify(BLE_SENSOR_CHAR_UUID, self._handle_emg_data)
                 await self._client.start_notify(BLE_CONTROL_CHAR_UUID, self._handle_control_state)
                 name = getattr(device, "name", None) or BLE_DEVICE_NAME or "EMG device"
                 self._set_ble_status(f"BLE: connected to {name}")
@@ -374,15 +416,32 @@ class MorseGame(QMainWindow):
 
         active = bool(data[0])
         if active == self._emg_active:
-            self._set_ble_status(self.ble_status)
+            self._refresh_diagnostics()
             return
 
         self._emg_active = active
+        self._control_edges += 1
+        self._last_edge_at = time.monotonic()
+        if active:
+            self._press_events += 1
+        else:
+            self._release_events += 1
         self._set_ble_status(self.ble_status)
         if active:
             _sig.pressed.emit()
         else:
             _sig.released.emit()
+
+    def _handle_emg_data(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+        if not data:
+            return
+
+        vals = list(data)
+        self._last_raw_min = min(vals)
+        self._last_raw_max = max(vals)
+        self._last_raw_avg = int(sum(vals) / len(vals))
+        self._last_raw_at = time.monotonic()
+        self._refresh_diagnostics()
 
     async def _disconnect_ble(self):
         client, self._client = self._client, None
@@ -394,6 +453,10 @@ class MorseGame(QMainWindow):
             return
         try:
             if client.is_connected:
+                try:
+                    await client.stop_notify(BLE_SENSOR_CHAR_UUID)
+                except Exception:
+                    pass
                 try:
                     await client.stop_notify(BLE_CONTROL_CHAR_UUID)
                 except Exception:
