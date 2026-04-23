@@ -23,7 +23,7 @@ MIN_PRESS_MS    = int(os.getenv("EMG_MIN_PRESS_MS", "10"))
 DOT_THRESHOLD   = int(os.getenv("EMG_DOT_THRESHOLD_MS", "100"))
 LETTER_PAUSE    = int(os.getenv("EMG_LETTER_PAUSE_MS", "5000"))   # ms silence → auto-submit
 CORRECT_PAUSE   = int(os.getenv("EMG_CORRECT_PAUSE_MS", "450"))
-LIVES           = 5   # wrong answers allowed before game over
+LIVES           = 1  # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
 BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "10:52:1C:5F:BE:EA")
