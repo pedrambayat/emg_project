@@ -1,4 +1,5 @@
 import sys, random, glob, subprocess, json, os, asyncio, time
+from collections import deque
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
@@ -31,16 +32,15 @@ EMG_CONTROL_SOURCE      = os.getenv("EMG_CONTROL_SOURCE", "raw").lower()
 BLE_SENSOR_CHAR_UUID    = "5212ddd0-29e5-11eb-adc1-0242ac120002"
 BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
-EMG_SPREAD_ALPHA        = float(os.getenv("EMG_SPREAD_ALPHA", "0.35"))
-EMG_IDLE_ALPHA          = float(os.getenv("EMG_IDLE_ALPHA", "0.05"))
-EMG_IDLE_FALL_ALPHA     = float(os.getenv("EMG_IDLE_FALL_ALPHA", "0.18"))
-EMG_IDLE_RISE_WINDOW    = float(os.getenv("EMG_IDLE_RISE_WINDOW", "3.0"))
-EMG_SPREAD_ON           = int(os.getenv("EMG_SPREAD_ON", "14"))
-EMG_SPREAD_OFF          = int(os.getenv("EMG_SPREAD_OFF", "8"))
-EMG_SPREAD_MARGIN_ON    = int(os.getenv("EMG_SPREAD_MARGIN_ON", "5"))
-EMG_SPREAD_MARGIN_OFF   = int(os.getenv("EMG_SPREAD_MARGIN_OFF", "2"))
-EMG_ON_PACKETS          = int(os.getenv("EMG_ON_PACKETS", "2"))
-EMG_OFF_PACKETS         = int(os.getenv("EMG_OFF_PACKETS", "3"))
+EMG_SAMPLE_RATE         = 1000
+EMG_AVG_WINDOW_MS       = int(os.getenv("EMG_AVG_WINDOW_MS", "40"))
+EMG_GAP_MS              = int(os.getenv("EMG_GAP_MS", "120"))
+EMG_BASELINE_ALPHA      = float(os.getenv("EMG_BASELINE_ALPHA", "0.02"))
+EMG_THRESHOLD_MARGIN    = float(os.getenv("EMG_THRESHOLD_MARGIN", "8"))
+EMG_ACTIVE_RATIO        = float(os.getenv("EMG_ACTIVE_RATIO", "0.85"))
+EMG_FIXED_THRESHOLD     = os.getenv("EMG_FIXED_THRESHOLD")
+EMG_AVG_WINDOW_SAMPLES  = max(1, int(EMG_SAMPLE_RATE * EMG_AVG_WINDOW_MS / 1000))
+EMG_GAP_SAMPLES         = max(1, int(EMG_SAMPLE_RATE * EMG_GAP_MS / 1000))
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -108,15 +108,19 @@ class MorseGame(QMainWindow):
         self._last_raw_max = None
         self._last_raw_avg = None
         self._last_raw_at = None
-        self._last_raw_spread = None
-        self._smoothed_spread = None
-        self._idle_spread = None
-        self._spread_on_threshold = EMG_SPREAD_ON
-        self._spread_off_threshold = EMG_SPREAD_OFF
         self._ble_control_edges_seen = 0
         self._ble_control_active = False
-        self._above_on_packets = 0
-        self._below_off_packets = 0
+        self._emg_window = deque(maxlen=EMG_AVG_WINDOW_SAMPLES)
+        self._emg_window_sum = 0.0
+        self._emg_mavg = None
+        self._emg_baseline = None
+        self._emg_threshold = None
+        self._segment_active = False
+        self._segment_total_samples = 0
+        self._segment_above_samples = 0
+        self._segment_below_gap_samples = 0
+        self._segment_last_duration_ms = None
+        self._segment_last_ratio = None
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -251,17 +255,19 @@ class MorseGame(QMainWindow):
     def _release(self):
         if not self.running or not self._input_pressed: return
         self._input_pressed = False
-        press_ms = self._ptimer.elapsed()
-        self._last_press_ms = press_ms
+        self._append_symbol(self._ptimer.elapsed())
+        self._ptimer.invalidate()
+        self._refresh_diagnostics()
+
+    def _append_symbol(self, press_ms):
+        self._last_press_ms = int(press_ms)
         self._ptimer.invalidate()
         if press_ms < MIN_PRESS_MS:
             self._ignored_presses += 1
-            self._refresh_diagnostics()
             return
         self.inp += "." if press_ms < DOT_THRESHOLD else "-"
         self.inp_lbl.setText(self.inp)
         self._pause.start(LETTER_PAUSE)
-        self._refresh_diagnostics()
 
     def _submit(self):
         self.total += 1
@@ -367,22 +373,20 @@ class MorseGame(QMainWindow):
         if self._last_raw_min is not None:
             raw_text = (
                 f"EMG raw min/max/avg {self._last_raw_min}/{self._last_raw_max}/{self._last_raw_avg}"
-                f" | spread {self._last_raw_spread}"
                 f" | age {raw_age_ms} ms"
             )
         control_text = (
             f"Input source {EMG_CONTROL_SOURCE}"
-            f" | effective edges {self._control_edges}"
+            f" | symbols {self._control_edges}"
             f" | press/release {self._press_events}/{self._release_events}"
             f" | last edge {edge_age_ms if edge_age_ms is not None else 'n/a'} ms ago"
         )
         if EMG_CONTROL_SOURCE == "raw":
             control_text += (
-                f" | smooth/idle "
-                f"{int(self._smoothed_spread) if self._smoothed_spread is not None else 'n/a'}"
-                f"/{int(self._idle_spread) if self._idle_spread is not None else 'n/a'}"
-                f" | on/off {self._spread_on_threshold}/{self._spread_off_threshold}"
-                f" | pkt {self._above_on_packets}/{self._below_off_packets}"
+                f" | avg/base/thr "
+                f"{int(self._emg_mavg) if self._emg_mavg is not None else 'n/a'}"
+                f"/{int(self._emg_baseline) if self._emg_baseline is not None else 'n/a'}"
+                f"/{int(self._emg_threshold) if self._emg_threshold is not None else 'n/a'}"
             )
         else:
             control_text += f" | BLE control edges seen {self._ble_control_edges_seen}"
@@ -390,6 +394,8 @@ class MorseGame(QMainWindow):
             f"Press ms {self._last_press_ms if self._last_press_ms is not None else 'n/a'}"
             f" | ignored<{MIN_PRESS_MS}ms {self._ignored_presses}"
             f" | dot<{DOT_THRESHOLD}ms"
+            f" | seg ms/ratio {self._segment_last_duration_ms if self._segment_last_duration_ms is not None else 'n/a'}"
+            f"/{self._segment_last_ratio if self._segment_last_ratio is not None else 'n/a'}"
         )
         self.diag_lbl.setText(f"{raw_text}\n{control_text}\n{press_text}")
 
@@ -398,8 +404,17 @@ class MorseGame(QMainWindow):
         self._input_pressed = False
         self._ptimer.invalidate()
         self._last_press_ms = None
-        self._above_on_packets = 0
-        self._below_off_packets = 0
+        self._segment_active = False
+        self._segment_total_samples = 0
+        self._segment_above_samples = 0
+        self._segment_below_gap_samples = 0
+        self._segment_last_duration_ms = None
+        self._segment_last_ratio = None
+        self._emg_window.clear()
+        self._emg_window_sum = 0.0
+        self._emg_mavg = None
+        self._emg_baseline = None
+        self._emg_threshold = None
         self._set_ble_status(self.ble_status)
 
     def _set_effective_input_state(self, active):
@@ -476,6 +491,68 @@ class MorseGame(QMainWindow):
                 return
         self._refresh_diagnostics()
 
+    def _process_emg_sample(self, sample):
+        if len(self._emg_window) == self._emg_window.maxlen:
+            self._emg_window_sum -= self._emg_window[0]
+        self._emg_window.append(sample)
+        self._emg_window_sum += sample
+        self._emg_mavg = self._emg_window_sum / len(self._emg_window)
+
+        if self._emg_baseline is None:
+            self._emg_baseline = self._emg_mavg
+        elif not self._segment_active:
+            self._emg_baseline = (
+                (1.0 - EMG_BASELINE_ALPHA) * self._emg_baseline
+                + EMG_BASELINE_ALPHA * self._emg_mavg
+            )
+
+        if EMG_FIXED_THRESHOLD is not None:
+            self._emg_threshold = float(EMG_FIXED_THRESHOLD)
+        else:
+            self._emg_threshold = self._emg_baseline + EMG_THRESHOLD_MARGIN
+
+        above_threshold = self._emg_mavg >= self._emg_threshold
+
+        if not self._segment_active:
+            if above_threshold:
+                self._segment_active = True
+                self._segment_total_samples = 1
+                self._segment_above_samples = 1
+                self._segment_below_gap_samples = 0
+                self._emg_active = True
+                self._press_events += 1
+            return
+
+        self._segment_total_samples += 1
+        if above_threshold:
+            self._segment_above_samples += 1
+            self._segment_below_gap_samples = 0
+        else:
+            self._segment_below_gap_samples += 1
+
+        if self._segment_below_gap_samples < EMG_GAP_SAMPLES:
+            return
+
+        effective_samples = self._segment_total_samples - self._segment_below_gap_samples
+        duration_ms = int(effective_samples * 1000 / EMG_SAMPLE_RATE)
+        ratio = round(self._segment_above_samples / effective_samples, 2) if effective_samples > 0 else 0.0
+        self._segment_last_duration_ms = duration_ms
+        self._segment_last_ratio = ratio
+
+        if effective_samples > 0 and ratio >= EMG_ACTIVE_RATIO:
+            self._control_edges += 1
+            self._release_events += 1
+            self._last_edge_at = time.monotonic()
+            self._append_symbol(duration_ms)
+        else:
+            self._ignored_presses += 1
+
+        self._segment_active = False
+        self._segment_total_samples = 0
+        self._segment_above_samples = 0
+        self._segment_below_gap_samples = 0
+        self._emg_active = False
+
     def _handle_emg_data(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         if not data:
             return
@@ -485,51 +562,11 @@ class MorseGame(QMainWindow):
         self._last_raw_max = max(vals)
         self._last_raw_avg = int(sum(vals) / len(vals))
         self._last_raw_at = time.monotonic()
-        self._last_raw_spread = self._last_raw_max - self._last_raw_min
-
-        if self._smoothed_spread is None:
-            self._smoothed_spread = float(self._last_raw_spread)
-        else:
-            self._smoothed_spread = (
-                (1.0 - EMG_SPREAD_ALPHA) * self._smoothed_spread
-                + EMG_SPREAD_ALPHA * self._last_raw_spread
-            )
-
-        if self._idle_spread is None:
-            self._idle_spread = float(self._smoothed_spread)
-        elif not self._emg_active:
-            if self._smoothed_spread <= self._idle_spread:
-                alpha = EMG_IDLE_FALL_ALPHA
-            elif self._smoothed_spread <= self._idle_spread + EMG_IDLE_RISE_WINDOW:
-                alpha = EMG_IDLE_ALPHA
-            else:
-                alpha = 0.0
-
-            if alpha:
-                self._idle_spread = (
-                    (1.0 - alpha) * self._idle_spread
-                    + alpha * self._smoothed_spread
-                )
-
-        self._spread_on_threshold = max(EMG_SPREAD_ON, int(self._idle_spread + EMG_SPREAD_MARGIN_ON))
-        self._spread_off_threshold = max(EMG_SPREAD_OFF, int(self._idle_spread + EMG_SPREAD_MARGIN_OFF))
 
         if EMG_CONTROL_SOURCE == "raw":
-            if self._emg_active:
-                if self._smoothed_spread < self._spread_off_threshold:
-                    self._below_off_packets += 1
-                else:
-                    self._below_off_packets = 0
-                self._above_on_packets = 0
-                active = self._below_off_packets < EMG_OFF_PACKETS
-            else:
-                if self._smoothed_spread >= self._spread_on_threshold:
-                    self._above_on_packets += 1
-                else:
-                    self._above_on_packets = 0
-                self._below_off_packets = 0
-                active = self._above_on_packets >= EMG_ON_PACKETS
-            self._set_effective_input_state(active)
+            for sample in vals:
+                self._process_emg_sample(sample)
+            self._set_ble_status(self.ble_status)
             return
 
         self._refresh_diagnostics()
