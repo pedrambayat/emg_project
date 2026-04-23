@@ -18,7 +18,8 @@ if platform == "win32":
 GPIO_PIN        = 22
 DISPLAY_BTN_PIN = 6
 SERVO_PIN       = 17
-DOT_THRESHOLD   = 300   # ms — shorter press = dot, longer = dash
+MIN_PRESS_MS    = int(os.getenv("EMG_MIN_PRESS_MS", "120"))
+DOT_THRESHOLD   = int(os.getenv("EMG_DOT_THRESHOLD_MS", "240"))
 LETTER_PAUSE    = 800   # ms silence → auto-submit
 LIVES           = 3   # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
@@ -84,6 +85,7 @@ class MorseGame(QMainWindow):
         self._ble_task = None
         self._closing = False
         self._emg_active = False
+        self._input_pressed = False
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -167,7 +169,7 @@ class MorseGame(QMainWindow):
 
     def _start(self):
         self.score = self.total = 0; self.lives = LIVES; self.running = True
-        self._reset_emg_gate()
+        self._reset_input_gate()
         self._refresh_lives(); self._servo_to_lives()
         self.start_btn.setEnabled(False); self.skip_btn.setEnabled(True); self.reset_btn.setEnabled(True)
         self._next()
@@ -198,7 +200,7 @@ class MorseGame(QMainWindow):
     def _reset(self):
         self._pause.stop(); self._result.stop(); self.running = False
         self.score = self.total = 0; self.lives = LIVES; self.inp = self.letter = ""
-        self._reset_emg_gate()
+        self._reset_input_gate()
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.score_lbl.setText("Current Score: 0 / 0")
@@ -207,12 +209,18 @@ class MorseGame(QMainWindow):
         self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
 
     def _press(self):
-        if not self.running: return
+        if not self.running or self._input_pressed: return
+        self._input_pressed = True
         self._pause.stop(); self._ptimer.start()
 
     def _release(self):
-        if not self.running: return
-        self.inp += "." if self._ptimer.elapsed() < DOT_THRESHOLD else "-"
+        if not self.running or not self._input_pressed: return
+        self._input_pressed = False
+        press_ms = self._ptimer.elapsed()
+        self._ptimer.invalidate()
+        if press_ms < MIN_PRESS_MS:
+            return
+        self.inp += "." if press_ms < DOT_THRESHOLD else "-"
         self.inp_lbl.setText(self.inp)
         self._pause.start(LETTER_PAUSE)
 
@@ -312,8 +320,10 @@ class MorseGame(QMainWindow):
         suffix = f" | Input {input_state}" if self.ble_enabled else ""
         self.input_lbl.setText(f"{self.ble_status}{suffix}")
 
-    def _reset_emg_gate(self):
+    def _reset_input_gate(self):
         self._emg_active = False
+        self._input_pressed = False
+        self._ptimer.invalidate()
         self._set_ble_status(self.ble_status)
 
     def _start_ble(self):
