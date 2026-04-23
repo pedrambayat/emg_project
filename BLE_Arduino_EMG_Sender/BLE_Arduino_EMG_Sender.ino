@@ -23,6 +23,8 @@ char pennKey[]                  =           "pbayat";                       // a
 // It stays pressed until the signal falls below CONTROL_OFF_THRESHOLD.
 const byte CONTROL_ON_THRESHOLD  =           150;
 const byte CONTROL_OFF_THRESHOLD =           135;
+const uint16_t CONTROL_ON_HOLD_MS  =         15;
+const uint16_t CONTROL_OFF_HOLD_MS =         25;
 
 ///////////////////////////////////////// END EDITABLE REGION ///////////////////////////////////////////////
 
@@ -39,6 +41,8 @@ const uint32_t SAMPLE_RATE        =           1000;                         // H
 const uint32_t UPDATE_INTERVAL    =           50000;                        // uS time to send small packets of data 50000
 const uint32_t SAMPLE_PD          =           1000000 / SAMPLE_RATE;        // uS how often to take a new sample aka the sample period
 const uint32_t NUMBER_OF_READINGS =           UPDATE_INTERVAL / SAMPLE_PD;  // number of samples in the small packet required for desired SAMPLE_RATE with given UPDATE_INTERVAL
+const uint16_t CONTROL_ON_HOLD_SAMPLES  =     (CONTROL_ON_HOLD_MS * SAMPLE_RATE + 999) / 1000;
+const uint16_t CONTROL_OFF_HOLD_SAMPLES =     (CONTROL_OFF_HOLD_MS * SAMPLE_RATE + 999) / 1000;
 
 // Establish constant pins
 const int ledPin                  =           LED_BUILTIN;              // Establish LED pin for altering user of BLE Status
@@ -74,14 +78,45 @@ BLECharacteristic controlChar( BLE_UUID_CONTROL_CHAR, BLERead | BLENotify, 1 );
 
 uint32_t i = 0;                                                         // index location of the next element to add to the multi_reading_data array
 byte controlState = 0;
+uint16_t controlOnSamples = 0;
+uint16_t controlOffSamples = 0;
 
 void updateControlState(byte analogValueByte)
 {
-  bool nextState = controlState ? (analogValueByte >= CONTROL_OFF_THRESHOLD) : (analogValueByte >= CONTROL_ON_THRESHOLD);
-  if (nextState != controlState)
+  if (!controlState)
   {
-    controlState = nextState ? 1 : 0;
-    controlChar.writeValue(&controlState, 1);
+    if (analogValueByte >= CONTROL_ON_THRESHOLD)
+    {
+      controlOnSamples++;
+      if (controlOnSamples >= CONTROL_ON_HOLD_SAMPLES)
+      {
+        controlState = 1;
+        controlOnSamples = 0;
+        controlOffSamples = 0;
+        controlChar.writeValue(&controlState, 1);
+      }
+    }
+    else
+    {
+      controlOnSamples = 0;
+    }
+    return;
+  }
+
+  if (analogValueByte < CONTROL_OFF_THRESHOLD)
+  {
+    controlOffSamples++;
+    if (controlOffSamples >= CONTROL_OFF_HOLD_SAMPLES)
+    {
+      controlState = 0;
+      controlOnSamples = 0;
+      controlOffSamples = 0;
+      controlChar.writeValue(&controlState, 1);
+    }
+  }
+  else
+  {
+    controlOffSamples = 0;
   }
 }
 
