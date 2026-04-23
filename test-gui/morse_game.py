@@ -156,7 +156,7 @@ class MorseGame(QMainWindow):
 
         v.addWidget(QLabel("Your Input", alignment=Qt.AlignCenter))
         self.inp_lbl = QLabel("", alignment=Qt.AlignCenter)
-        self.inp_lbl.setFont(QFont("Courier", 24))
+        self.inp_lbl.setFont(QFont("Courier", 18))
         self.result_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.result_lbl.setMinimumHeight(24)
         v.addWidget(self.inp_lbl); v.addWidget(self.result_lbl)
