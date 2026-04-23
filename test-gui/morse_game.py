@@ -18,8 +18,8 @@ if platform == "win32":
 GPIO_PIN        = 22
 DISPLAY_BTN_PIN = 6
 SERVO_PIN       = 17
-MIN_PRESS_MS    = int(os.getenv("EMG_MIN_PRESS_MS", "120"))
-DOT_THRESHOLD   = int(os.getenv("EMG_DOT_THRESHOLD_MS", "240"))
+MIN_PRESS_MS    = int(os.getenv("EMG_MIN_PRESS_MS", "50"))
+DOT_THRESHOLD   = int(os.getenv("EMG_DOT_THRESHOLD_MS", "280"))
 LETTER_PAUSE    = 800   # ms silence → auto-submit
 LIVES           = 3   # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
