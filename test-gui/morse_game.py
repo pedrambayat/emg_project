@@ -33,10 +33,12 @@ BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
 EMG_SPREAD_ALPHA        = float(os.getenv("EMG_SPREAD_ALPHA", "0.35"))
 EMG_IDLE_ALPHA          = float(os.getenv("EMG_IDLE_ALPHA", "0.05"))
-EMG_SPREAD_ON           = int(os.getenv("EMG_SPREAD_ON", "18"))
-EMG_SPREAD_OFF          = int(os.getenv("EMG_SPREAD_OFF", "10"))
-EMG_SPREAD_MARGIN_ON    = int(os.getenv("EMG_SPREAD_MARGIN_ON", "6"))
-EMG_SPREAD_MARGIN_OFF   = int(os.getenv("EMG_SPREAD_MARGIN_OFF", "3"))
+EMG_IDLE_FALL_ALPHA     = float(os.getenv("EMG_IDLE_FALL_ALPHA", "0.18"))
+EMG_IDLE_RISE_WINDOW    = float(os.getenv("EMG_IDLE_RISE_WINDOW", "3.0"))
+EMG_SPREAD_ON           = int(os.getenv("EMG_SPREAD_ON", "14"))
+EMG_SPREAD_OFF          = int(os.getenv("EMG_SPREAD_OFF", "8"))
+EMG_SPREAD_MARGIN_ON    = int(os.getenv("EMG_SPREAD_MARGIN_ON", "5"))
+EMG_SPREAD_MARGIN_OFF   = int(os.getenv("EMG_SPREAD_MARGIN_OFF", "2"))
 EMG_ON_PACKETS          = int(os.getenv("EMG_ON_PACKETS", "2"))
 EMG_OFF_PACKETS         = int(os.getenv("EMG_OFF_PACKETS", "3"))
 
@@ -376,8 +378,9 @@ class MorseGame(QMainWindow):
         )
         if EMG_CONTROL_SOURCE == "raw":
             control_text += (
-                f" | smooth/idle {self._smoothed_spread if self._smoothed_spread is not None else 'n/a'}"
-                f"/{self._idle_spread if self._idle_spread is not None else 'n/a'}"
+                f" | smooth/idle "
+                f"{int(self._smoothed_spread) if self._smoothed_spread is not None else 'n/a'}"
+                f"/{int(self._idle_spread) if self._idle_spread is not None else 'n/a'}"
                 f" | on/off {self._spread_on_threshold}/{self._spread_off_threshold}"
                 f" | pkt {self._above_on_packets}/{self._below_off_packets}"
             )
@@ -495,10 +498,18 @@ class MorseGame(QMainWindow):
         if self._idle_spread is None:
             self._idle_spread = float(self._smoothed_spread)
         elif not self._emg_active:
-            self._idle_spread = (
-                (1.0 - EMG_IDLE_ALPHA) * self._idle_spread
-                + EMG_IDLE_ALPHA * self._smoothed_spread
-            )
+            if self._smoothed_spread <= self._idle_spread:
+                alpha = EMG_IDLE_FALL_ALPHA
+            elif self._smoothed_spread <= self._idle_spread + EMG_IDLE_RISE_WINDOW:
+                alpha = EMG_IDLE_ALPHA
+            else:
+                alpha = 0.0
+
+            if alpha:
+                self._idle_spread = (
+                    (1.0 - alpha) * self._idle_spread
+                    + alpha * self._smoothed_spread
+                )
 
         self._spread_on_threshold = max(EMG_SPREAD_ON, int(self._idle_spread + EMG_SPREAD_MARGIN_ON))
         self._spread_off_threshold = max(EMG_SPREAD_OFF, int(self._idle_spread + EMG_SPREAD_MARGIN_OFF))
