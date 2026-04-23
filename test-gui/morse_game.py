@@ -22,6 +22,7 @@ SERVO_PIN       = 17
 MIN_PRESS_MS    = int(os.getenv("EMG_MIN_PRESS_MS", "10"))
 DOT_THRESHOLD   = int(os.getenv("EMG_DOT_THRESHOLD_MS", "100"))
 LETTER_PAUSE    = int(os.getenv("EMG_LETTER_PAUSE_MS", "5000"))   # ms silence → auto-submit
+CORRECT_PAUSE   = int(os.getenv("EMG_CORRECT_PAUSE_MS", "450"))
 LIVES           = 5   # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
@@ -107,7 +108,6 @@ class MorseGame(QMainWindow):
         self._emg_active = False
         self._input_pressed = False
         self._ble_control_active = False
-        self._pending_result_text = ""
         self._emg_window = deque(maxlen=EMG_AVG_WINDOW_SAMPLES)
         self._emg_window_sum = 0.0
         self._emg_mavg = None
@@ -210,8 +210,7 @@ class MorseGame(QMainWindow):
         self.inp = ""; self.letter = random.choice(list(MORSE))
         self.target.setText(self.letter)
         self.hint.setText("? ? ?" if self.challenge else MORSE[self.letter])
-        self.inp_lbl.setText(""); self.result_lbl.setText(self._pending_result_text)
-        self._pending_result_text = ""
+        self.inp_lbl.setText(""); self.result_lbl.setText("")
         self.skip_btn.setEnabled(True); self._score()
 
     def _toggle_challenge(self, on):
@@ -232,7 +231,6 @@ class MorseGame(QMainWindow):
     def _reset(self):
         self._pause.stop(); self._result.stop(); self.running = False
         self.score = self.total = 0; self.lives = LIVES; self.inp = self.letter = ""
-        self._pending_result_text = ""
         self._reset_input_gate()
         self.target.setText("—"); self.hint.setText("")
         self.inp_lbl.setText(""); self.result_lbl.setText("")
@@ -242,7 +240,7 @@ class MorseGame(QMainWindow):
         self.skip_btn.setEnabled(False); self.reset_btn.setEnabled(False)
 
     def _press(self):
-        if not self.running or self._input_pressed: return
+        if not self.running or self._input_pressed or self._result.isActive(): return
         self._input_pressed = True
         self._pause.stop(); self._ptimer.start()
 
@@ -268,8 +266,10 @@ class MorseGame(QMainWindow):
         self.total += 1
         correct = MORSE[self.letter]
         if self.inp == correct:
-            self._pending_result_text = random.choice(CORRECT_MESSAGES).format(letter=self.letter, morse=correct)
-            self.score += 1; self._score(); self._next()
+            self.result_lbl.setText(random.choice(CORRECT_MESSAGES).format(letter=self.letter, morse=correct))
+            self.score += 1; self._score()
+            self.skip_btn.setEnabled(False)
+            self._result.start(CORRECT_PAUSE)
         else:
             decoded = {v:k for k,v in MORSE.items()}.get(self.inp, "?")
             self.result_lbl.setText(f"Wrong! Got '{self.inp}' ({decoded}), expected '{correct}'")
