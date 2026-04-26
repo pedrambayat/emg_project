@@ -9,5 +9,5 @@ dependencies = [
     "bleak==1.0.1",
     "gpiozero>=2.0.1",
     "pigpio>=1.78",
-    "rpi-lgpio==0.6; platform_system == 'Linux' and platform_machine == 'aarch64'",
+    "rpi-lgpio==0.6",
 ]
