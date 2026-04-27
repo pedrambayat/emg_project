@@ -26,7 +26,7 @@ CORRECT_PAUSE   = int(os.getenv("EMG_CORRECT_PAUSE_MS", "450"))
 LIVES           = 1  # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
-BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "10:52:1C:5F:BE:EA")
+BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "80:7D:3A:85:E8:C6:")
 BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
 BLE_ENABLED             = os.getenv("EMG_USE_BLE", "1") != "0"
 EMG_CONTROL_SOURCE      = os.getenv("EMG_CONTROL_SOURCE", "raw").lower()
