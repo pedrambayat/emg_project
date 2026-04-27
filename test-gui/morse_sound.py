@@ -5,6 +5,8 @@ from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
+import numpy as np
+import pyqtgraph as pg
 import qasync
 
 from sys import platform
@@ -47,6 +49,7 @@ EMG_ACTIVE_RATIO        = float(os.getenv("EMG_ACTIVE_RATIO", "0.85"))
 EMG_FIXED_THRESHOLD     = os.getenv("EMG_FIXED_THRESHOLD")
 EMG_AVG_WINDOW_SAMPLES  = max(1, int(EMG_SAMPLE_RATE * EMG_AVG_WINDOW_MS / 1000))
 EMG_GAP_SAMPLES         = max(1, int(EMG_SAMPLE_RATE * EMG_GAP_MS / 1000))
+PLOT_HISTORY_SAMPLES    = max(200, int(EMG_SAMPLE_RATE * 4))
 
 MORSE = {
     'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
@@ -113,6 +116,8 @@ class MorseGame(QMainWindow):
         self._emg_active = False
         self._input_pressed = False
         self._ble_control_active = False
+        self._raw_plot = deque(maxlen=PLOT_HISTORY_SAMPLES)
+        self._mavg_plot = deque(maxlen=PLOT_HISTORY_SAMPLES)
         self._emg_window = deque(maxlen=EMG_AVG_WINDOW_SAMPLES)
         self._emg_window_sum = 0.0
         self._emg_mavg = None
@@ -129,6 +134,10 @@ class MorseGame(QMainWindow):
         self._result = QTimer(singleShot=True, timeout=self._next)
 
         self._build()
+        self._plot_timer = QTimer(self)
+        self._plot_timer.setInterval(80)
+        self._plot_timer.timeout.connect(self._refresh_plot)
+        self._plot_timer.start()
         self._refresh_hi()
         self._refresh_lives()
         self._servo_to_lives()
@@ -193,16 +202,57 @@ class MorseGame(QMainWindow):
 
         v.addWidget(self._line())
 
-        v.addWidget(QLabel("Your Input", alignment=Qt.AlignCenter))
+        bottom = QHBoxLayout()
+        bottom.setSpacing(16)
+
+        graph_box = QVBoxLayout()
+        graph_box.setSpacing(6)
+        graph_title = QLabel("Live EMG", alignment=Qt.AlignLeft)
+        graph_title.setFont(QFont("Helvetica", 11, QFont.Bold))
+        graph_box.addWidget(graph_title)
+
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setBackground("w")
+        self.plot_widget.showGrid(x=True, y=True, alpha=0.15)
+        self.plot_widget.setLabel("left", "Signal")
+        self.plot_widget.setLabel("bottom", "Seconds")
+        self.plot_widget.setMinimumHeight(220)
+        self.plot_widget.setMaximumHeight(260)
+        self.plot_widget.addLegend(offset=(10, 10))
+        self.raw_curve = self.plot_widget.plot(pen=pg.mkPen("#9ca3af", width=1), name="Raw")
+        self.mavg_curve = self.plot_widget.plot(pen=pg.mkPen("#0f766e", width=2), name="Moving Avg")
+        graph_box.addWidget(self.plot_widget)
+        bottom.addLayout(graph_box, stretch=3)
+
+        input_box = QVBoxLayout()
+        input_box.setSpacing(6)
+        input_box.addWidget(QLabel("Your Input", alignment=Qt.AlignCenter))
         self.inp_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.inp_lbl.setFont(QFont("Courier", 24))
         self.result_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.result_lbl.setMinimumHeight(24)
-        v.addWidget(self.inp_lbl); v.addWidget(self.result_lbl)
+        self.result_lbl.setWordWrap(True)
+        input_box.addWidget(self.inp_lbl)
+        input_box.addWidget(self.result_lbl)
+        input_box.addStretch()
+        bottom.addLayout(input_box, stretch=2)
+
+        v.addLayout(bottom)
 
 
     def _line(self):
         f = QFrame(); f.setFrameShape(QFrame.HLine); f.setFrameShadow(QFrame.Sunken); return f
+
+    def _refresh_plot(self):
+        if not self._raw_plot:
+            self.raw_curve.setData([], [])
+            self.mavg_curve.setData([], [])
+            return
+
+        count = len(self._raw_plot)
+        x = np.linspace(-count / EMG_SAMPLE_RATE, 0, count)
+        self.raw_curve.setData(x, np.array(self._raw_plot, dtype=float))
+        self.mavg_curve.setData(x, np.array(self._mavg_plot, dtype=float))
 
     def _stop_connected_sound(self):
         proc, self._connected_sound_proc = self._connected_sound_proc, None
@@ -474,11 +524,13 @@ class MorseGame(QMainWindow):
         return
 
     def _process_emg_sample(self, sample):
+        self._raw_plot.append(sample)
         if len(self._emg_window) == self._emg_window.maxlen:
             self._emg_window_sum -= self._emg_window[0]
         self._emg_window.append(sample)
         self._emg_window_sum += sample
         self._emg_mavg = self._emg_window_sum / len(self._emg_window)
+        self._mavg_plot.append(self._emg_mavg)
 
         if self._emg_baseline is None:
             self._emg_baseline = self._emg_mavg
