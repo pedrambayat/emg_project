@@ -1,9 +1,8 @@
-import sys, random, glob, subprocess, json, os, asyncio
+import sys, random, glob, subprocess, json, os, asyncio, shutil
 from collections import deque
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox
-from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject, QUrl
+from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
-from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 import qasync
@@ -27,6 +26,7 @@ CORRECT_PAUSE   = int(os.getenv("EMG_CORRECT_PAUSE_MS", "450"))
 LIVES           = 3  # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 CONNECTED_SOUND_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "connected.mp3")
+CONNECTED_SOUND_PLAYER = shutil.which("mpg123")
 
 BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "80:7D:3A:85:E8:C6")
 BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
@@ -122,7 +122,7 @@ class MorseGame(QMainWindow):
         self._segment_total_samples = 0
         self._segment_above_samples = 0
         self._segment_below_gap_samples = 0
-        self._connected_sound = self._build_connected_sound()
+        self._connected_sound_proc = None
 
         self._ptimer = QElapsedTimer()
         self._pause  = QTimer(singleShot=True, timeout=self._submit)
@@ -204,21 +204,30 @@ class MorseGame(QMainWindow):
     def _line(self):
         f = QFrame(); f.setFrameShape(QFrame.HLine); f.setFrameShadow(QFrame.Sunken); return f
 
-    def _build_connected_sound(self):
-        if not os.path.exists(CONNECTED_SOUND_PATH):
-            return None
-
-        player = QMediaPlayer(self)
-        player.setMedia(QMediaContent(QUrl.fromLocalFile(CONNECTED_SOUND_PATH)))
-        player.setVolume(100)
-        return player
-
-    def _play_connected_sound(self):
-        if self._connected_sound is None:
+    def _stop_connected_sound(self):
+        proc, self._connected_sound_proc = self._connected_sound_proc, None
+        if proc is None:
             return
 
-        self._connected_sound.stop()
-        self._connected_sound.play()
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+    def _play_connected_sound(self):
+        if CONNECTED_SOUND_PLAYER is None or not os.path.exists(CONNECTED_SOUND_PATH):
+            return
+
+        self._stop_connected_sound()
+        try:
+            self._connected_sound_proc = subprocess.Popen(
+                [CONNECTED_SOUND_PLAYER, "-q", CONNECTED_SOUND_PATH],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            self._connected_sound_proc = None
 
     def _start(self):
         self.score = self.total = 0; self.lives = LIVES; self.running = True
@@ -563,6 +572,7 @@ class MorseGame(QMainWindow):
                 pass
             self._ble_task = None
         await self._disconnect_ble()
+        self._stop_connected_sound()
 
     def closeEvent(self, e):
         self._closing = True
