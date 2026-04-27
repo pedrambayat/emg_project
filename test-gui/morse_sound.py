@@ -98,7 +98,7 @@ class MorseGame(QMainWindow):
         super().__init__()
         self.setWindowTitle("EMG Morse Code Game")
         screen = QApplication.primaryScreen().availableGeometry()
-        self.setGeometry(screen.x(), screen.y(), screen.width(), int(screen.height() * 0.75))
+        self.setGeometry(screen.x(), screen.y(), screen.width(), int(screen.height() * 0.95))
         self.letter = ""
         self.inp    = ""
         self.score  = self.total = 0
@@ -156,7 +156,7 @@ class MorseGame(QMainWindow):
 
     def _build(self):
         root = QWidget(); self.setCentralWidget(root)
-        v = QVBoxLayout(root); v.setContentsMargins(20,20,20,20); v.setSpacing(10)
+        v = QVBoxLayout(root); v.setContentsMargins(12,12,12,12); v.setSpacing(6)
 
         title = QLabel("Morse Code Game", alignment=Qt.AlignCenter)
         title.setFont(QFont("Helvetica", 18, QFont.Bold))
@@ -197,7 +197,7 @@ class MorseGame(QMainWindow):
         self.target = QLabel("—", alignment=Qt.AlignCenter)
         self.target.setFont(QFont("Courier", 24, QFont.Bold))
         self.hint = QLabel("", alignment=Qt.AlignCenter)
-        self.hint.setFont(QFont("Courier", 16))
+        self.hint.setFont(QFont("Courier", 14))
         v.addWidget(self.target); v.addWidget(self.hint)
 
         v.addWidget(self._line())
@@ -216,13 +216,13 @@ class MorseGame(QMainWindow):
         self.plot_widget.showGrid(x=True, y=True, alpha=0.15)
         self.plot_widget.setLabel("left", "Signal")
         self.plot_widget.setLabel("bottom", "Seconds")
-        self.plot_widget.setMinimumHeight(220)
-        self.plot_widget.setMaximumHeight(260)
+        self.plot_widget.setMinimumHeight(260)
+        self.plot_widget.setMaximumHeight(320)
         self.plot_widget.addLegend(offset=(10, 10))
         self.raw_curve = self.plot_widget.plot(pen=pg.mkPen("#9ca3af", width=1), name="Raw")
         self.mavg_curve = self.plot_widget.plot(pen=pg.mkPen("#0f766e", width=2), name="Moving Avg")
         graph_box.addWidget(self.plot_widget)
-        bottom.addLayout(graph_box, stretch=3)
+        bottom.addLayout(graph_box, stretch=4)
 
         input_box = QVBoxLayout()
         input_box.setSpacing(6)
@@ -235,9 +235,9 @@ class MorseGame(QMainWindow):
         input_box.addWidget(self.inp_lbl)
         input_box.addWidget(self.result_lbl)
         input_box.addStretch()
-        bottom.addLayout(input_box, stretch=2)
+        bottom.addLayout(input_box, stretch=1)
 
-        v.addLayout(bottom)
+        v.addLayout(bottom, stretch=1)
 
 
     def _line(self):
