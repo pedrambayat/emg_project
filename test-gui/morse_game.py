@@ -40,7 +40,7 @@ EMG_SAMPLE_RATE         = 1000
 EMG_AVG_WINDOW_MS       = int(os.getenv("EMG_AVG_WINDOW_MS", "40"))
 EMG_GAP_MS              = int(os.getenv("EMG_GAP_MS", "120"))
 EMG_BASELINE_ALPHA      = float(os.getenv("EMG_BASELINE_ALPHA", "0.02"))
-EMG_THRESHOLD_MARGIN    = float(os.getenv("EMG_THRESHOLD_MARGIN", "14"))
+EMG_THRESHOLD_MARGIN    = float(os.getenv("EMG_THRESHOLD_MARGIN", "8"))
 EMG_ACTIVE_RATIO        = float(os.getenv("EMG_ACTIVE_RATIO", "0.85"))
 EMG_FIXED_THRESHOLD     = os.getenv("EMG_FIXED_THRESHOLD")
 EMG_AVG_WINDOW_SAMPLES  = max(1, int(EMG_SAMPLE_RATE * EMG_AVG_WINDOW_MS / 1000))
@@ -183,7 +183,7 @@ class MorseGame(QMainWindow):
 
         v.addWidget(QLabel("Your Letter", alignment=Qt.AlignCenter))
         self.target = QLabel("—", alignment=Qt.AlignCenter)
-        self.target.setFont(QFont("Courier", 64, QFont.Bold))
+        self.target.setFont(QFont("Courier", 48, QFont.Bold))
         self.hint = QLabel("", alignment=Qt.AlignCenter)
         self.hint.setFont(QFont("Courier", 16))
         v.addWidget(self.target); v.addWidget(self.hint)
@@ -192,7 +192,7 @@ class MorseGame(QMainWindow):
 
         v.addWidget(QLabel("Your Input", alignment=Qt.AlignCenter))
         self.inp_lbl = QLabel("", alignment=Qt.AlignCenter)
-        self.inp_lbl.setFont(QFont("Courier", 18))
+        self.inp_lbl.setFont(QFont("Courier", 24))
         self.result_lbl = QLabel("", alignment=Qt.AlignCenter)
         self.result_lbl.setMinimumHeight(24)
         v.addWidget(self.inp_lbl); v.addWidget(self.result_lbl)
