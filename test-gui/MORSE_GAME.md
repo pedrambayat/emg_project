@@ -204,6 +204,33 @@ To force the old GPIO button behavior:
 EMG_USE_BLE=0 uv run python test-gui/morse_game.py
 ```
 
+### Calibrate raw EMG mode
+
+If you are using `EMG_CONTROL_SOURCE=raw`, use the calibration tool before tuning the game by hand:
+
+```bash
+EMG_USE_BLE=1 EMG_CONTROL_SOURCE=raw uv run python test-gui/emg_calibration.py
+```
+
+Recommended workflow:
+
+- capture `rest` first while fully relaxed
+- capture `dots` using repeated short contractions with clear pauses
+- capture `dashes` using repeated longer contractions with clear pauses
+
+The calibration window will show:
+
+- live raw EMG and moving average plots
+- the current baseline and threshold preview
+- suggested values for `EMG_FIXED_THRESHOLD`
+- suggested timing values such as `EMG_GAP_MS`, `EMG_MIN_PRESS_MS`, and `EMG_DOT_THRESHOLD_MS`
+
+Then launch the game with the suggested values, for example:
+
+```bash
+EMG_USE_BLE=1 EMG_CONTROL_SOURCE=raw EMG_FIXED_THRESHOLD=92 EMG_GAP_MS=140 EMG_DOT_THRESHOLD_MS=135 uv run python test-gui/morse_game.py
+```
+
 ## Arduino Control State
 
 `BLE_Arduino_EMG_Sender/BLE_Arduino_EMG_Sender.ino` now exposes two BLE characteristics in the same service:
