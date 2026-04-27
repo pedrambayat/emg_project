@@ -26,15 +26,15 @@ CORRECT_PAUSE   = int(os.getenv("EMG_CORRECT_PAUSE_MS", "450"))
 LIVES           = 1  # wrong answers allowed before game over
 HISCORE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".morse_highscore.json")
 
-BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "80:7D:3A:85:E8:C6:")
+BLE_ADDRESS             = os.getenv("EMG_BLE_ADDRESS", "80:7D:3A:85:E8:C6")
 BLE_DEVICE_NAME         = os.getenv("EMG_BLE_NAME", "EMG_Sender_pbayat")
 BLE_ENABLED             = os.getenv("EMG_USE_BLE", "1") != "0"
 EMG_CONTROL_SOURCE      = os.getenv("EMG_CONTROL_SOURCE", "raw").lower()
-# BLE_SENSOR_CHAR_UUID    = "5212ddd0-29e5-11eb-adc1-0242ac120002"
-# BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
+BLE_SENSOR_CHAR_UUID    = "5212ddd0-29e5-11eb-adc1-0242ac120002"
+BLE_CONTROL_CHAR_UUID   = "5212ddd1-29e5-11eb-adc1-0242ac120002"
 
-BLE_SENSOR_CHAR_UUID    = "386a83e2-28fa-11eb-adc1-0242ac120002"
-BLE_CONTROL_CHAR_UUID   = "386a83e2-28fa-11eb-adc1-0242ac120002"
+# BLE_SENSOR_CHAR_UUID    = "386a83e2-28fa-11eb-adc1-0242ac120002"
+# BLE_CONTROL_CHAR_UUID   = "386a83e2-28fa-11eb-adc1-0242ac120002"
 BLE_RETRY_SECONDS       = 2.0
 EMG_SAMPLE_RATE         = 1000
 EMG_AVG_WINDOW_MS       = int(os.getenv("EMG_AVG_WINDOW_MS", "40"))
